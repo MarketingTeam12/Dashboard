@@ -1,0 +1,36 @@
+import { Navigate, Route, Routes } from 'react-router-dom';
+import MainLayout from './components/layout/MainLayout';
+import Contacts from './pages/Contacts/Contacts';
+import Accounts from './pages/Accounts/Accounts';
+import Deals from './pages/Deals/Deals';
+import Calls from './pages/Calls/Calls';
+import StageSummaryPercentage from './pages/StageSummaryPercentage/StageSummaryPercentage';
+import StageSummaryOldData from './pages/StageSummaryOldData/StageSummaryOldData';
+import ZohoFinance from './pages/ZohoFinance/ZohoFinance';
+import WorkflowBuilder from './pages/WorkflowBuilder/WorkflowBuilder';
+import Reports from './pages/Reports/Reports';
+import ReportBuilder from './pages/Reports/ReportBuilder';
+import ReportDetail from './pages/Reports/ReportDetail';
+
+export default function App() {
+  return (
+    <Routes>
+      <Route element={<MainLayout />}>
+        <Route index element={<Navigate to="/contacts" replace />} />
+        <Route path="/contacts" element={<Contacts />} />
+        <Route path="/accounts" element={<Accounts />} />
+        <Route path="/deals" element={<Deals />} />
+        <Route path="/calls" element={<Calls />} />
+        <Route path="/reports" element={<Reports />} />
+        <Route path="/reports/create" element={<ReportBuilder />} />
+        <Route path="/reports/:id" element={<ReportDetail />} />
+        <Route path="/stage-summary-percentage" element={<StageSummaryPercentage />} />
+        <Route path="/stage-summary-old-data" element={<StageSummaryOldData />} />
+        <Route path="/zoho-finance" element={<ZohoFinance />} />
+        <Route path="/workflows" element={<WorkflowBuilder />} />
+        <Route path="/workflows/:id" element={<WorkflowBuilder />} />
+        <Route path="*" element={<Navigate to="/reports" replace />} />
+      </Route>
+    </Routes>
+  );
+}

@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { -webkit-text-size-adjust: 100%; }
+  body { @apply bg-page text-ink font-sans antialiased; font-feature-settings: 'cv11', 'ss01'; }
+  :focus-visible { outline: 2px solid #1262E0; outline-offset: 2px; }
+  button { -webkit-tap-highlight-color: transparent; }
+}
+
+@layer components {
+  .card { @apply bg-white border border-line rounded-xl shadow-card; }
+  .btn-primary { @apply h-10 px-4 rounded-lg bg-primary text-white text-[14px] font-medium hover:bg-primary-600 inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed; }
+  .btn-secondary { @apply h-10 px-4 rounded-lg border border-line bg-white text-ink text-[14px] font-medium hover:bg-page inline-flex items-center justify-center gap-2 disabled:opacity-50; }
+  .btn-danger { @apply h-10 px-4 rounded-lg bg-danger text-white text-[14px] font-medium hover:bg-danger-700 inline-flex items-center justify-center gap-2; }
+  .input { @apply w-full h-10 px-3 rounded-lg border border-line bg-white text-[13.5px] text-ink placeholder:text-ink-400 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/15; }
+  .icon-btn { @apply h-[34px] w-[34px] rounded-lg border border-line bg-white flex items-center justify-center text-ink-600 hover:bg-page hover:text-primary; }
+  .icon-btn-primary { @apply h-[34px] w-[34px] rounded-lg border border-line bg-white flex items-center justify-center text-primary hover:bg-primary-50; }
+  .th { @apply h-[46px] px-2 text-[12.5px] font-semibold text-ink whitespace-nowrap border-b border-line; }
+  .td { @apply px-2 border-b border-line-soft text-ink-600 align-middle; }
+  .cb { @apply h-[17px] w-[17px] rounded border-line text-primary cursor-pointer accent-[#1262E0]; }
+  .link { @apply text-primary hover:underline; }
+  .chart-card { @apply card px-3.5 py-3; }
+  .chart-title { @apply text-[15px] font-semibold text-ink flex items-center gap-1.5; }
+}
+
+.thin-scroll::-webkit-scrollbar { height: 8px; width: 8px; }
+.thin-scroll::-webkit-scrollbar-thumb { background: #CBD6E6; border-radius: 8px; }
+.thin-scroll::-webkit-scrollbar-track { background: transparent; }
+.sidebar-scroll { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.15) transparent; }
+.sidebar-scroll::-webkit-scrollbar { width: 6px; }
+.sidebar-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 6px; }
+
+@keyframes popIn { from { opacity: 0; transform: translateY(-4px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes drawerIn { from { transform: translateX(24px); opacity: 0.4; } to { transform: none; opacity: 1; } }
+@keyframes toastIn { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
+.pop-in { animation: popIn 0.14s ease-out; }
+.drawer-in { animation: drawerIn 0.18s ease-out; }
+.toast-in { animation: toastIn 0.18s ease-out; }
+@media (prefers-reduced-motion: reduce) { .pop-in, .drawer-in, .toast-in { animation: none; } }
+
+/* React Flow theming */
+.react-flow__controls { box-shadow: 0 1px 6px rgba(7,19,68,0.1); border-radius: 8px; overflow: hidden; border: 1px solid #DFE8F5; }
+.react-flow__controls-button { border-bottom: 1px solid #EDF2F9; width: 30px; height: 30px; }
+.react-flow__edge-path { stroke: #9BB1D3; stroke-width: 2; }
+.react-flow__edge.selected .react-flow__edge-path { stroke: #1262E0; }
+.react-flow__handle { width: 10px; height: 10px; border: 2px solid #fff; }
