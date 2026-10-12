@@ -1,6 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { CalendarRange, ChevronDown, Clock3, Coins, Download, Eye, Pencil, Plus, Trash2, Trophy, UserCog, XCircle, Search, Check, Settings2 } from 'lucide-react';
+import {
+  CalendarRange, ChevronDown, Clock3, Columns2, Columns3, Coins, Download, LayoutDashboard, LayoutGrid, List,
+  PieChart, Plus, SlidersHorizontal, Table2, Trash2, Trophy, UserCog, XCircle, Search, Check, Settings2,
+  Upload, FileSpreadsheet, Package, FileText, Printer
+} from 'lucide-react';
 import { useCRM } from '../../context/CRMContext';
 import PageHeader from '../../components/common/PageHeader';
 import StatCard from '../../components/common/StatCard';
@@ -10,7 +14,6 @@ import Pagination from '../../components/common/Pagination';
 import useTable from '../../components/common/useTable';
 import StatusBadge, { badgeTone } from '../../components/common/StatusBadge';
 import { UserAvatar } from '../../components/common/Avatar';
-import ActionMenu from '../../components/common/ActionMenu';
 import FormModal from '../../components/common/RecordForm';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
 
@@ -19,6 +22,13 @@ import BulkBar, { BulkButton } from '../../components/common/BulkBar';
 import { ChartView, GridView, KanbanView } from '../../components/common/Views';
 import DealDetail from './DealDetail';
 import CreateDeal from './CreateDeal';
+import TileView from './TileView';
+import TimelineView from './TimelineView';
+import SplitView from './SplitView';
+import CustomViewsModal from './CustomViewsModal';
+import SheetViewModal from './SheetViewModal';
+import PrintViewModal from './PrintViewModal';
+import ImportModal from './ImportModal';
 import { useRefresh, useUrlActions } from '../../components/common/hooks';
 import { DEAL_SOURCES, DEPARTMENTS } from '../../data/seedData';
 import {
@@ -27,7 +37,7 @@ import {
 import { exportCSV } from '../../utils/exportCSV';
 
 const DEFAULT_RANGE = { from: '2026-01-01', to: '2026-12-31' };
-const BAR = { 'Need Deal Estimation': '#A970F5', 'Deal Estimation Ready': '#FF7B3A', 'Deal Estimation sent to Client': '#2F7BF5', 'Deal Estimation accepted- Invoice Need': '#8E3CF2', 'Deal Invoice Ready': '#FFBB28', 'Deal Closed (Won)': '#10B981', 'Deal Job Seeking & Agency': '#F59E0B', 'Pre-Deal Lost': '#7F1D1D', 'Deal Closed (Lost)': '#EF4444' };
+const BAR = STAGE_COLORS;
 
 const ALL_COLUMNS = [
   'Activity Badge', 'Note Badge', 'Created Time', 'Categories', 'Deal Name', 'Mobile', 'Remarks', 'Lead Manager 1', 'Stage', 'Amount', 'City', 'Tag', 'Reason for Closed lost', 'Last Activity Time', 'Sales_ No', 'Deal Owner', 'Previous Pending Estimations', 'Closed Won date', 'Closing Date', 'Lead Source', 'Purpose Of translation', 'Job type', 'Contact Name', 'Account Name', 'Type', 'Probability (%)', 'Campaign Source', 'Created By', 'Modified By', 'Modified Time', 'Description', 'Expected Revenue', 'Lead Conversion Time', 'Sales Cycle Duration', 'Overall Sales Duration', 'Forecast Category', 'Territory', 'Client Name', 'Estimation created by', 'Category', 'Connected To', 'Delivery Date and time', 'Tracking Number', 'Draft copy', 'Service Provider', 'Soft copy', 'Source Language List', 'Target Language List', 'Invoice_No', 'Est_NO', 'Without GST', 'GST Amount', 'Project Requirements', 'Mobile No', 'Deal Approval Status', 'Revenue projections Prediction', 'Approval sent time', 'Linxon Vendor/ Supplier Name', 'Comments', 'Closed Won Approval', 'EST Ready', 'Closed Lost Approval', 'Previous Stage', 'Deal Aging', 'Others(Specify)', 'Linxon Approval', 'Client Budget', 'Incentive Amount', 'Wizard', 'Delivery type', 'Submission Status', 'Deal suggestions', 'Language Class Info', 'Overseas Educations Info', 'Deal Activity aging', 'Hanioo Onboarded Date & Time', 'Hanioo Not Interested Reason', 'Hanioo Discussion Notes', 'Hanioo Re-Approval Status', 'Total Call Duration', 'Total Call Count'
@@ -129,12 +139,127 @@ function monthly(rows) {
   return [6, 7, 8, 9, 10].map((m) => rows.filter((d) => Number(d.createdOn.slice(5, 7)) <= m).length + 1);
 }
 
+export const ALL_9_VIEWS = [
+  { key: 'list', label: 'List View', icon: List },
+  { key: 'kanban', label: 'Kanban View', icon: Columns3 },
+  { key: 'grid', label: 'Grid View', icon: LayoutGrid },
+  { key: 'chart', label: 'Chart View', icon: PieChart },
+  { key: 'timeline', label: 'Timeline View', icon: Clock3 },
+  { key: 'split', label: 'Split View', icon: Columns2 },
+  { key: 'custom_list', label: 'Custom List View', icon: SlidersHorizontal },
+  { key: 'tile', label: 'Tile View', icon: LayoutDashboard },
+  { key: 'table', label: 'Table View', icon: Table2 },
+];
+
+const DEFAULT_VISIBLE_VIEWS = ['list', 'kanban', 'grid', 'chart', 'timeline', 'split'];
+
 export default function Deals() {
   const { deals, oldDeals, accounts, contacts, users, accountName, contactName, userName, createRecord, updateRecord, deleteRecords, accountsById } = useCRM();
   const navigate = useNavigate();
   const { refreshing, refresh } = useRefresh('Deals');
   const [savedView, setSavedView] = useState('all');
-  const [layout, setLayout] = useState('list');
+
+  // Exactly 6 visible icons in toolbar
+  const [visibleViews, setVisibleViews] = useState(() => {
+    try {
+      const saved = localStorage.getItem('deals_visible_views');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (
+          Array.isArray(parsed) &&
+          parsed.length === 6 &&
+          parsed.every((k) => ALL_9_VIEWS.some((v) => v.key === k))
+        ) {
+          return parsed;
+        }
+      }
+    } catch (e) {}
+    return DEFAULT_VISIBLE_VIEWS;
+  });
+
+  const [layout, setLayoutState] = useState(() => {
+    const saved = localStorage.getItem('deals_layout');
+    if (saved && ALL_9_VIEWS.some((v) => v.key === saved)) {
+      return saved;
+    }
+    return 'list';
+  });
+
+  const setLayout = (l) => {
+    setLayoutState(l);
+    try {
+      localStorage.setItem('deals_layout', l);
+    } catch (e) {}
+  };
+
+  // The remaining 3 views kept in the dropdown
+  const dropdownViews = useMemo(() => {
+    return ALL_9_VIEWS.filter((v) => !visibleViews.includes(v.key));
+  }, [visibleViews]);
+
+  // Clicking a visible icon displays that view immediately
+  const handleSelectVisibleView = (key) => {
+    setLayout(key);
+  };
+
+  // Selecting a hidden view from the dropdown replaces the currently active visible icon.
+  // Moves the replaced view into the dropdown.
+  // Always maintains exactly 6 visible icons and 3 dropdown options.
+  const handleSelectDropdownView = (dropdownKey) => {
+    setVisibleViews((prevVisible) => {
+      const activeIndex = prevVisible.indexOf(layout);
+      const replaceIndex = activeIndex >= 0 ? activeIndex : 0;
+      const nextVisible = [...prevVisible];
+      nextVisible[replaceIndex] = dropdownKey;
+      try {
+        localStorage.setItem('deals_visible_views', JSON.stringify(nextVisible));
+      } catch (e) {}
+      return nextVisible;
+    });
+
+    setLayout(dropdownKey);
+  };
+
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importType, setImportType] = useState('deals');
+  const [sheetViewOpen, setSheetViewOpen] = useState(false);
+  const [printModalOpen, setPrintModalOpen] = useState(false);
+  const [printMode, setPrintMode] = useState('default');
+
+  const handleImportDeals = (newDeals) => {
+    newDeals.forEach((d) => createRecord('deals', d));
+    table.setPage(1);
+  };
+
+  const handleImportDealsProducts = (newDealsWithProducts) => {
+    newDealsWithProducts.forEach((d) => createRecord('deals', d));
+    table.setPage(1);
+  };
+
+  const handleImportNotes = (notesList) => {
+    notesList.forEach((n) => {
+      if (n.dealId) {
+        const deal = deals.find((d) => d.id === n.dealId);
+        if (deal) {
+          const prevNotes = deal.notes || [];
+          updateRecord('deals', deal.id, {
+            notes: [...prevNotes, { id: `note-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`, title: n.title, content: n.content, date: n.date }],
+          });
+        }
+      }
+    });
+  };
+
+  const handleSaveSheetUpdates = (updatedRows) => {
+    updatedRows.forEach((r) => {
+      if (r.isNew) {
+        const { isNew, ...rest } = r;
+        createRecord('deals', rest);
+      } else {
+        updateRecord('deals', r.id, r);
+      }
+    });
+  };
   const [dense, setDense] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [search, setSearch] = useState('');
@@ -161,8 +286,148 @@ export default function Deals() {
     return ['Deal Name', 'Account Name', 'Contact Name', 'Stage', 'Amount', 'Closing Date', 'Probability (%)', 'Deal Owner', 'Created Time'];
   });
 
+  const [pinnedColumns, setPinnedColumns] = useState(() => {
+    try {
+      const saved = localStorage.getItem('deals_pinned_cols');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return [];
+  });
+
+  const handleTogglePin = (colKey, col) => {
+    const targetName = col?.colName || col?.header || colKey;
+    setPinnedColumns((prev) => {
+      const isAlreadyPinned = prev.includes(targetName) || prev.includes(colKey) || (col?.header && prev.includes(col.header));
+      let next;
+      if (isAlreadyPinned) {
+        next = prev.filter((k) => k !== targetName && k !== colKey && k !== col?.header);
+      } else {
+        next = [...prev, targetName];
+      }
+      try {
+        localStorage.setItem('deals_pinned_cols', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+  };
+
+  const handleHideColumn = (colKey, col) => {
+    const targetName = col?.colName || col?.header || colKey;
+    const colToHide = visibleColumns.find((c) => c === targetName || c === colKey || c === col?.header) || targetName;
+    if (colToHide === 'Deal Name') return;
+    const nextCols = visibleColumns.filter((c) => c !== colToHide);
+    setVisibleColumns(nextCols);
+    try {
+      localStorage.setItem('deals_cols', JSON.stringify(nextCols));
+    } catch (e) {}
+  };
+
+  const [customViewsModalOpen, setCustomViewModalOpen] = useState(false);
+  const [customViews, setCustomViews] = useState(() => {
+    try {
+      const saved = localStorage.getItem('deals_custom_views');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return [
+      {
+        id: 'cv_high_value',
+        name: 'High Value Deals',
+        description: 'Deals worth ₹10,00,000 or more',
+        columns: ['Deal Name', 'Account Name', 'Amount', 'Stage', 'Closing Date', 'Probability (%)', 'Deal Owner'],
+        rules: [{ field: 'Amount', op: 'Greater Than', val: '1000000' }],
+      },
+      {
+        id: 'cv_closing_soon',
+        name: 'Closing This Quarter',
+        description: 'Deals closing before end of year',
+        columns: ['Deal Name', 'Account Name', 'Closing Date', 'Stage', 'Amount', 'Deal Owner'],
+        rules: [{ field: 'Closing Date', op: 'Before', val: '2026-12-31' }],
+      },
+    ];
+  });
+  const [activeCustomView, setActiveCustomView] = useState(null);
+  const [splitSelectedId, setSplitSelectedId] = useState(() => {
+    return localStorage.getItem('split_view_deal_id') || null;
+  });
+  const handleSplitSelect = (id) => {
+    setSplitSelectedId(id);
+    try {
+      localStorage.setItem('split_view_deal_id', id);
+    } catch (e) {}
+  };
+
+  const handleSaveCustomView = (newOrUpdatedView) => {
+    setCustomViews(prev => {
+      const idx = prev.findIndex(v => v.id === newOrUpdatedView.id);
+      let next;
+      if (idx >= 0) {
+        next = [...prev];
+        next[idx] = newOrUpdatedView;
+      } else {
+        next = [...prev, newOrUpdatedView];
+      }
+      localStorage.setItem('deals_custom_views', JSON.stringify(next));
+      return next;
+    });
+    if (activeCustomView?.id === newOrUpdatedView.id) {
+      setActiveCustomView(newOrUpdatedView);
+      if (newOrUpdatedView.columns?.length) {
+        setVisibleColumns(newOrUpdatedView.columns);
+      }
+    }
+  };
+
+  const handleDeleteCustomView = (id) => {
+    setCustomViews(prev => {
+      const next = prev.filter(v => v.id !== id);
+      localStorage.setItem('deals_custom_views', JSON.stringify(next));
+      return next;
+    });
+    if (activeCustomView?.id === id) {
+      setActiveCustomView(null);
+    }
+  };
+
+  const handleSelectCustomView = (cv) => {
+    setActiveCustomView(cv);
+    if (cv.columns?.length) {
+      setVisibleColumns(cv.columns);
+    }
+    setLayout('list');
+    table.setPage(1);
+  };
+
   const [form, setForm] = useState(null);
-  const [viewing, setViewing] = useState(null);
+  const [viewing, setViewing] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('open') || null;
+  });
+
+  const openDeal = (id) => {
+    setViewing(id);
+    const sp = new URLSearchParams(window.location.search);
+    sp.set('open', id);
+    window.history.replaceState(null, '', `${window.location.pathname}?${sp.toString()}`);
+  };
+
+  const closeDeal = () => {
+    setViewing(null);
+    setQuick(null);
+    const sp = new URLSearchParams(window.location.search);
+    sp.delete('open');
+    const q = sp.toString();
+    window.history.replaceState(null, '', `${window.location.pathname}${q ? `?${q}` : ''}`);
+  };
+
+  useEffect(() => {
+    const onPop = () => {
+      const sp = new URLSearchParams(window.location.search);
+      setViewing(sp.get('open') || null);
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
   const [confirm, setConfirm] = useState(null);
   const [bulk, setBulk] = useState(null);
   const [quick, setQuick] = useState(null);
@@ -216,33 +481,42 @@ export default function Deals() {
       
       // Apply dynamic filters
       for (const [key, conf] of Object.entries(appliedFilters)) {
-        if (!conf || !conf.val) continue; // Skip if no value selected
+        if (!conf || (!conf.val && conf.op !== 'Is Empty')) continue; // Skip if no value selected
         
         let recordVal = '';
-        if (key === 'Stage') recordVal = d.stage;
-        else if (key === 'Deal Owner') recordVal = d.ownerId;
-        else if (key === 'Account Name') recordVal = d.accountId;
-        else if (key === 'Deal Source') recordVal = d.source;
+        if (key === 'Stage' || key === 'stage') recordVal = d.stage;
+        else if (key === 'Deal Owner' || key === 'owner') recordVal = d.ownerId;
+        else if (key === 'Account Name' || key === 'account') recordVal = d.accountId;
+        else if (key === 'Contact Name' || key === 'contact') recordVal = contactName(d.contactId);
+        else if (key === 'Deal Name' || key === 'name') recordVal = d.name;
+        else if (key === 'Deal Source' || key === 'source') recordVal = d.source;
         else if (key === 'Department') recordVal = d.department;
-        else if (key === 'Amount') recordVal = d.amount;
-        else if (key === 'Closing Date') recordVal = d.closingDate;
-        else continue; // For mock fields, assume true if we can't map it to real data
+        else if (key === 'Amount' || key === 'amount') recordVal = Number(d.amount) || 0;
+        else if (key === 'Closing Date' || key === 'closingDate') recordVal = d.closingDate;
+        else if (key === 'Probability (%)' || key === 'probability') recordVal = Number(d.probability) || 0;
+        else if (key === 'Created Time' || key === 'createdOn') recordVal = d.createdOn;
+        else if (key === 'Description' || key === 'description') recordVal = d.description || '';
+        else continue;
         
         const type = getFieldType(key);
         if (type === 'Dropdown') {
-          if (conf.op === 'Is' && recordVal !== conf.val) return false;
-          if (conf.op === 'Is Not' && recordVal === conf.val) return false;
+          const matchVal = (val) => String(recordVal).toLowerCase() === String(val).toLowerCase() ||
+            (key.includes('Account') && accountName(d.accountId).toLowerCase() === String(val).toLowerCase()) ||
+            (key.includes('Owner') && userName(d.ownerId).toLowerCase() === String(val).toLowerCase());
+          if (conf.op === 'Is' && !matchVal(conf.val)) return false;
+          if (conf.op === 'Is Not' && matchVal(conf.val)) return false;
         } else if (type === 'Number') {
+          const rNum = Number(recordVal) || 0;
           const valNum = Number(conf.val);
-          if (conf.op === 'Equals' && recordVal !== valNum) return false;
-          if (conf.op === 'Greater Than' && recordVal <= valNum) return false;
-          if (conf.op === 'Less Than' && recordVal >= valNum) return false;
+          if (conf.op === 'Equals' && rNum !== valNum) return false;
+          if (conf.op === 'Greater Than' && rNum <= valNum) return false;
+          if (conf.op === 'Less Than' && rNum >= valNum) return false;
           if (conf.op === 'Between' && conf.val2) {
-            if (recordVal < valNum || recordVal > Number(conf.val2)) return false;
+            if (rNum < valNum || rNum > Number(conf.val2)) return false;
           }
         } else if (type === 'Text') {
           const rStr = String(recordVal).toLowerCase();
-          const vStr = String(conf.val).toLowerCase();
+          const vStr = String(conf.val || '').toLowerCase();
           if (conf.op === 'Contains' && !rStr.includes(vStr)) return false;
           if (conf.op === 'Equals' && rStr !== vStr) return false;
           if (conf.op === 'Starts With' && !rStr.startsWith(vStr)) return false;
@@ -255,15 +529,96 @@ export default function Deals() {
           }
         }
       }
+
+      // Apply active custom view rules
+      if (activeCustomView?.rules?.length) {
+        for (const rule of activeCustomView.rules) {
+          if (!rule.field || rule.val === '') continue;
+          let rVal = '';
+          if (rule.field === 'Stage') rVal = d.stage;
+          else if (rule.field === 'Deal Owner') rVal = d.ownerId;
+          else if (rule.field === 'Account Name') rVal = d.accountId;
+          else if (rule.field === 'Deal Source') rVal = d.source;
+          else if (rule.field === 'Department') rVal = d.department;
+          else if (rule.field === 'Amount') rVal = Number(d.amount) || 0;
+          else if (rule.field === 'Probability (%)') rVal = Number(d.probability) || 0;
+          else if (rule.field === 'Closing Date') rVal = d.closingDate;
+          else if (rule.field === 'Deal Name') rVal = d.name;
+
+          if (rule.op === 'Is' || rule.op === 'Equals') {
+            if (typeof rVal === 'number') {
+              if (rVal !== Number(rule.val)) return false;
+            } else {
+              if (String(rVal).toLowerCase() !== String(rule.val).toLowerCase()) return false;
+            }
+          } else if (rule.op === 'Is Not') {
+            if (String(rVal).toLowerCase() === String(rule.val).toLowerCase()) return false;
+          } else if (rule.op === 'Greater Than') {
+            if (Number(rVal) <= Number(rule.val)) return false;
+          } else if (rule.op === 'Less Than') {
+            if (Number(rVal) >= Number(rule.val)) return false;
+          } else if (rule.op === 'Contains') {
+            if (!String(rVal).toLowerCase().includes(String(rule.val).toLowerCase())) return false;
+          } else if (rule.op === 'Starts With') {
+            if (!String(rVal).toLowerCase().startsWith(String(rule.val).toLowerCase())) return false;
+          } else if (rule.op === 'Before') {
+            if (rVal >= rule.val) return false;
+          } else if (rule.op === 'After') {
+            if (rVal <= rule.val) return false;
+          }
+        }
+      }
       return true;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deals, search, range, appliedFilters, savedView, accountName, contactName, userName]);
+  }, [deals, search, range, appliedFilters, savedView, activeCustomView, accountName, contactName, userName]);
 
   const accessors = useMemo(() => ({ account: (d) => accountName(d.accountId), contact: (d) => contactName(d.contactId), owner: (d) => userName(d.ownerId), stage: (d) => STAGES.indexOf(d.stage) }), [accountName, contactName, userName]);
   const table = useTable(filtered, { accessors, pageSize });
-  const reset = () => { setAppliedFilters({}); setFilterConfig({}); setSelectedFields(new Set()); setSearch(''); setRange(DEFAULT_RANGE); setSavedView('all'); };
+  const reset = () => { setAppliedFilters({}); setFilterConfig({}); setSelectedFields(new Set()); setSearch(''); setRange(DEFAULT_RANGE); setSavedView('all'); setActiveCustomView(null); };
   const moreCount = Object.keys(appliedFilters).length;
+
+  const handleFilterColumn = (colKey, filterState, col) => {
+    const targetName = col?.colName || col?.header || colKey;
+    const fieldName = visibleColumns.find((c) => c === targetName || c === colKey || c === col?.header) || targetName;
+    if (!filterState || (!filterState.val && filterState.op !== 'Is Empty')) {
+      setAppliedFilters((prev) => {
+        const next = { ...prev };
+        delete next[fieldName];
+        delete next[colKey];
+        if (col?.header) delete next[col.header];
+        return next;
+      });
+      setFilterConfig((prev) => {
+        const next = { ...prev };
+        delete next[fieldName];
+        delete next[colKey];
+        if (col?.header) delete next[col.header];
+        return next;
+      });
+    } else {
+      setAppliedFilters((prev) => ({
+        ...prev,
+        [fieldName]: filterState,
+      }));
+      setFilterConfig((prev) => ({
+        ...prev,
+        [fieldName]: filterState,
+      }));
+    }
+    table.setPage(1);
+  };
+
+  const columnMenuConfig = useMemo(() => ({
+    module: 'deals',
+    pinnedColumns,
+    onTogglePin: handleTogglePin,
+    onHideColumn: handleHideColumn,
+    onFilterColumn: handleFilterColumn,
+    appliedFilters,
+    filterOptions: filterOptionsContext,
+    getFieldType: (k) => getFieldType(k),
+  }), [pinnedColumns, appliedFilters, filterOptionsContext, visibleColumns]);
 
   const k = dealKpis(filtered);
   const prev = dealKpis(oldDeals);
@@ -288,15 +643,22 @@ export default function Deals() {
 
   useUrlActions({
     onCreate: (p) => setForm({ mode: 'create', record: blank(p) }),
-    onOpen: (id) => deals.some((d) => d.id === id) && setViewing(id),
+    onOpen: (id) => deals.some((d) => d.id === id) && openDeal(id),
     onParams: (p) => { if (p.stage) set('stage')(p.stage); if (p.view === 'kanban') setLayout('kanban'); },
   });
 
   const submit = (v) => {
-    const patch = { ...v, lostAtStage: v.stage === 'Closed Lost' ? v.lostAtStage || form.record.stage || 'Need Deal Estimation' : '' };
-    if (form.mode === 'create') { createRecord('deals', patch); table.setSort(null); table.setPage(1); setRange({ from: '', to: '' }); }
-    else updateRecord('deals', form.record.id, patch);
-    setForm(null);
+    const patch = { ...v, lostAtStage: v.stage === 'Closed Lost' ? v.lostAtStage || form?.record?.stage || 'Need Deal Estimation' : '' };
+    let saved = null;
+    if (form?.mode === 'create') {
+      saved = createRecord('deals', patch);
+      table.setSort(null);
+      table.setPage(1);
+      setRange({ from: '', to: '' });
+    } else {
+      saved = updateRecord('deals', form?.record?.id, patch);
+    }
+    return saved;
   };
 
   const exportRows = (rows) => exportCSV('deals', rows, [
@@ -313,7 +675,7 @@ export default function Deals() {
   );
 
   const allColumnsDef = useMemo(() => ({
-    'Deal Name': { key: 'name', header: 'Deal Name', sortable: true, render: (d) => <button type="button" onClick={() => setViewing(d.id)} className="text-primary hover:underline text-left">{d.name}</button> },
+    'Deal Name': { key: 'name', header: 'Deal Name', sortable: true, render: (d) => <button type="button" onClick={() => openDeal(d.id)} className="text-primary hover:underline text-left">{d.name}</button> },
     'Account Name': { key: 'account', header: 'Account Name', sortable: true, render: (d) => <Link to={`/accounts?open=${d.accountId}`} className="text-primary hover:underline">{accountName(d.accountId)}</Link> },
     'Contact Name': { key: 'contact', header: 'Contact Name', sortable: true, render: (d) => (d.contactId ? <Link to={`/contacts?open=${d.contactId}`} className="text-primary hover:underline">{contactName(d.contactId)}</Link> : <span className="text-ink-400">—</span>) },
     'Stage': { key: 'stage', header: 'Stage', sortable: true, render: (d) => (
@@ -329,25 +691,15 @@ export default function Deals() {
   }), [accountName, contactName, userName]);
 
   const columns = useMemo(() => {
-    const cols = visibleColumns.map(c => ({ ...(allColumnsDef[c] || { key: c, header: c, sortable: false, render: () => <span className="text-ink-400">—</span> }) }));
+    const cols = visibleColumns.map(c => ({
+      ...(allColumnsDef[c] || { key: c, header: c, sortable: false, render: () => <span className="text-ink-400">—</span> }),
+      colName: c
+    }));
     cols.forEach(c => {
       if (!wrapText && !c.className?.includes('whitespace-nowrap')) c.className = (c.className ? c.className + ' ' : '') + 'whitespace-nowrap';
     });
-    cols.push({ key: 'actions', header: '', align: 'center', render: (d) => (
-      <div className="flex items-center justify-center gap-1.5">
-        <button className="icon-btn-primary" onClick={() => setViewing(d.id)} aria-label={`View ${d.name}`}><Eye size={17} /></button>
-        <button className="icon-btn-primary" onClick={() => setForm({ mode: 'edit', record: d })} aria-label={`Edit ${d.name}`}><Pencil size={16} /></button>
-        <ActionMenu items={[
-          { label: 'Update amount, probability & date', icon: Pencil, onClick: () => { setViewing(d.id); setQuick({ amount: d.amount, probability: d.probability, closingDate: d.closingDate }); } },
-          { label: 'Mark as Deal Closed (Won)', icon: Trophy, onClick: () => changeStage(d, 'Deal Closed (Won)') },
-          { label: 'Mark as Closed Lost', icon: XCircle, onClick: () => changeStage(d, 'Closed Lost') },
-          { divider: true },
-          { label: 'Delete deal', icon: Trash2, danger: true, onClick: () => setConfirm({ ids: [d.id], label: d.name }) },
-        ]} />
-      </div>
-    ) });
     return cols;
-  }, [visibleColumns, allColumnsDef, wrapText, changeStage]);
+  }, [visibleColumns, allColumnsDef, wrapText]);
 
   const rec = deals.find((d) => d.id === viewing);
   const selectedIds = [...table.selected];
@@ -419,9 +771,29 @@ export default function Deals() {
   return (
     <div>
       {form ? (
-        <CreateDeal record={form.record} mode={form.mode} onSave={(data, isNew) => { submit(data); if (isNew) setForm({ mode: 'create', record: blank() }); }} onCancel={() => setForm(null)} />
+        <CreateDeal
+          key={form.mode === 'create' ? (form.record?._t || 'new') : form.record?.id}
+          record={form.record}
+          mode={form.mode}
+          onSave={(data, isNew) => {
+            const saved = submit(data);
+            if (isNew) {
+              setForm({ mode: 'create', record: { ...blank(), _t: Date.now() } });
+            } else {
+              setForm(null);
+              if (saved?.id) {
+                openDeal(saved.id);
+              }
+            }
+          }}
+          onCancel={() => setForm(null)}
+        />
       ) : viewing ? (
-        <DealDetail id={viewing} onClose={() => { setViewing(null); setQuick(null); }} />
+        <DealDetail
+          id={viewing}
+          onClose={closeDeal}
+          onEdit={(d) => { closeDeal(); setForm({ mode: 'edit', record: d }); }}
+        />
       ) : (
         <div className="flex flex-col gap-3">
       <PageHeader
@@ -463,9 +835,8 @@ export default function Deals() {
                 {p.length === 0 && m.length === 0 && <div className="px-3 py-2 text-ink-500 text-[13px] text-center">No views found</div>}
               </div>
               <div className="border-t border-line p-1 sticky bottom-0 bg-white">
-                <MenuItem close={close}><span className="text-primary font-medium">Show custom views as Dropdown</span></MenuItem>
-                <MenuItem close={close}><span className="text-primary font-medium">New Custom View</span></MenuItem>
-                <MenuItem close={close}><span className="text-primary font-medium">Manage Custom View</span></MenuItem>
+                <MenuItem close={close} onClick={() => setCustomViewModalOpen(true)}><span className="text-primary font-medium">New Custom View</span></MenuItem>
+                <MenuItem close={close} onClick={() => setCustomViewModalOpen(true)}><span className="text-primary font-medium">Manage Custom Views</span></MenuItem>
               </div>
             </div>
           );
@@ -489,15 +860,58 @@ export default function Deals() {
           </div>
         }
         toolbar={{
-          filterActive: filtersOpen, onFilter: () => setFiltersOpen((o) => !o),
-          sortOptions: [{ key: 'name', label: 'Deal Name' }, { key: 'amount', label: 'Amount' }, { key: 'closingDate', label: 'Closing Date' }, { key: 'probability', label: 'Probability' }, { key: 'stage', label: 'Stage' }, { key: 'createdOn', label: 'Created On' }],
-          sort: table.sort, onSort: table.setSort, layouts: ['list', 'kanban', 'grid', 'chart'], layout, onLayout: setLayout,
-          onRefresh: refresh, refreshing, dense, onDense: () => setDense((d) => !d), module: 'Deals',
-          primary: { label: 'Create Deal', onClick: () => setForm({ mode: 'create', record: blank() }), menu: [
-            { label: 'Create Deal', icon: Plus, onClick: () => setForm({ mode: 'create', record: blank() }) },
-            { label: 'Open Kanban board', onClick: () => setLayout('kanban') },
-            { label: 'Export deals (CSV)', icon: Download, onClick: () => exportRows(table.sorted) },
-          ] },
+          sidebarToggle: { isOpen: filtersOpen, onToggle: () => setFiltersOpen((o) => !o) },
+          filterActive: filtersOpen,
+          onFilter: () => setFiltersOpen((o) => !o),
+          labeled: true,
+          sortOptions: [
+            { key: 'name', label: 'Deal Name' },
+            { key: 'amount', label: 'Amount' },
+            { key: 'closingDate', label: 'Closing Date' },
+            { key: 'probability', label: 'Probability' },
+            { key: 'stage', label: 'Stage' },
+            { key: 'createdOn', label: 'Created On' },
+          ],
+          sort: table.sort,
+          onSort: table.setSort,
+          layouts: visibleViews,
+          layout,
+          onLayout: handleSelectVisibleView,
+          onRefresh: refresh,
+          refreshing,
+          dense,
+          onDense: () => setDense((d) => !d),
+          module: 'Deals',
+          hideWorkflow: true,
+          hideDense: true,
+          customViewsDropdown: (close) => (
+            <>
+              <MenuLabel>More Views ({dropdownViews.length})</MenuLabel>
+              {dropdownViews.map((v) => {
+                const Icon = v.icon;
+                return (
+                  <MenuItem
+                    key={v.key}
+                    close={close}
+                    icon={Icon}
+                    onClick={() => handleSelectDropdownView(v.key)}
+                  >
+                    {v.label}
+                  </MenuItem>
+                );
+              })}
+            </>
+          ),
+          primary: {
+            label: 'Create Deal',
+            onClick: () => setForm({ mode: 'create', record: blank() }),
+            menu: [
+              { label: 'Create Deal', icon: Plus, onClick: () => setForm({ mode: 'create', record: blank() }) },
+              { label: 'Import Deals', icon: Upload, onClick: () => { setImportType('deals'); setImportModalOpen(true); } },
+              { label: 'Import Deals X Products', icon: Package, onClick: () => { setImportType('deals_products'); setImportModalOpen(true); } },
+              { label: 'Import Notes', icon: FileText, onClick: () => { setImportType('notes'); setImportModalOpen(true); } },
+            ],
+          },
           moreItems: [
             { label: 'Mass Transfer', onClick: () => {} },
             { label: 'Mass Delete', onClick: () => setConfirm({ ids: selectedIds.length ? selectedIds : deals.map(d => d.id), label: selectedIds.length ? `${selectedIds.length} deals` : 'all deals' }) },
@@ -507,7 +921,33 @@ export default function Deals() {
             { label: 'Drafts', onClick: () => {} },
             { label: 'Mass Email', onClick: () => {} },
             { label: 'Deduplicate Deals', onClick: () => {} },
-            { label: 'Create Client Script', onClick: () => {} },
+            { divider: true },
+            { label: 'Sheet View', icon: FileSpreadsheet, onClick: () => setSheetViewOpen(true) },
+            {
+              render: (close) => (
+                <div className="py-0.5">
+                  <div className="px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-ink-400 flex items-center justify-between">
+                    <span>Print View</span>
+                    <Printer size={12} />
+                  </div>
+                  <MenuItem
+                    close={close}
+                    icon={Printer}
+                    onClick={() => { setPrintMode('default'); setPrintModalOpen(true); }}
+                  >
+                    1. Print Default View
+                  </MenuItem>
+                  <MenuItem
+                    close={close}
+                    icon={FileText}
+                    onClick={() => { setPrintMode('canvas'); setPrintModalOpen(true); }}
+                  >
+                    2. Print Using Canvas
+                  </MenuItem>
+                </div>
+              ),
+            },
+            { divider: true },
             { label: 'Export Deals', onClick: () => exportRows(table.sorted) },
           ],
         }}
@@ -522,9 +962,11 @@ export default function Deals() {
       </div>
 
       <div className="flex gap-3 items-start">
-
-        {filtersOpen && (
-          <aside className="card hidden md:flex flex-col w-[250px] shrink-0 sticky top-[72px] h-[calc(100vh-86px)] overflow-hidden">
+        <aside
+          className={`card hidden md:flex flex-col shrink-0 sticky top-[72px] h-[calc(100vh-86px)] overflow-hidden transition-all duration-300 ease-in-out ${
+            filtersOpen ? 'w-[250px] opacity-100' : 'w-0 opacity-0 border-0 p-0 overflow-hidden -mr-3 pointer-events-none'
+          }`}
+        >
             <div className="px-3.5 pt-4 pb-2">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-[15px] font-semibold text-ink whitespace-nowrap">Filter Deals by</h2>
@@ -589,9 +1031,46 @@ export default function Deals() {
               </div>
             )}
           </aside>
-        )}
 
         <div className="flex-1 min-w-0">
+          {activeCustomView && (
+            <div className="flex items-center justify-between px-4 py-2.5 bg-primary-50 border border-primary-200 rounded-xl mb-3 text-[13px] shadow-xs">
+              <div className="flex items-center gap-2.5">
+                <div className="h-6 w-6 rounded-md bg-primary text-white flex items-center justify-center">
+                  <SlidersHorizontal size={13} />
+                </div>
+                <div>
+                  <span className="font-semibold text-primary">Custom View: </span>
+                  <span className="font-bold text-ink">{activeCustomView.name}</span>
+                  <span className="text-ink-500 ml-2">
+                    ({filtered.length} Deals · {activeCustomView.columns?.length || 0} Columns)
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setCustomViewModalOpen(true)}
+                  className="text-primary hover:underline font-semibold text-[12.5px]"
+                >
+                  Edit View
+                </button>
+                <span className="text-ink-300">•</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveCustomView(null);
+                    localStorage.removeItem('deals_cols');
+                    setVisibleColumns(['Deal Name', 'Account Name', 'Contact Name', 'Stage', 'Amount', 'Closing Date', 'Probability (%)', 'Deal Owner', 'Created Time']);
+                  }}
+                  className="text-ink-500 hover:text-red-500 text-[12.5px] font-medium"
+                >
+                  Reset to All Deals
+                </button>
+              </div>
+            </div>
+          )}
+
           <section className="card overflow-hidden">
             <BulkBar count={selectedIds.length} onClear={table.clearSelection}>
               <BulkButton onClick={() => setBulk('stage')}>Change stage</BulkButton>
@@ -599,7 +1078,8 @@ export default function Deals() {
               <BulkButton icon={Download} onClick={() => exportRows(deals.filter((d) => table.selected.has(d.id)))}>Export</BulkButton>
               <BulkButton icon={Trash2} danger onClick={() => setConfirm({ ids: selectedIds, label: `${selectedIds.length} deals` })}>Delete</BulkButton>
             </BulkBar>
-            {layout === 'list' && <DataTable columns={columns} rows={table.pageRows} table={table} loading={refreshing} dense={dense} minWidth={1290}
+            {/* 1. List View */}
+            {layout === 'list' && <DataTable columns={columns} rows={table.pageRows} table={table} loading={refreshing} dense={dense} minWidth={1290} columnMenu={columnMenuConfig}
               emptyAction={<button className="btn-primary mt-2 h-9" onClick={() => setForm({ mode: 'create', record: blank() })}><Plus size={16} />Create Deal</button>}
               headerExtra={
                 <th className="th w-[44px] text-center p-0">
@@ -611,7 +1091,7 @@ export default function Deals() {
                     {(close) => (
                       <div className="py-1">
                         <MenuItem close={close} onClick={() => setManageColsOpen(true)}>Manage Columns</MenuItem>
-                        <MenuItem close={close} onClick={() => { localStorage.removeItem('deals_cols'); setVisibleColumns(['Deal Name', 'Account Name', 'Contact Name', 'Stage', 'Amount', 'Closing Date', 'Probability (%)', 'Deal Owner', 'Created Time']); }}>Reset Column Size</MenuItem>
+                        <MenuItem close={close} onClick={() => { localStorage.removeItem('deals_cols'); localStorage.removeItem('deals_pinned_cols'); setPinnedColumns([]); setVisibleColumns(['Deal Name', 'Account Name', 'Contact Name', 'Stage', 'Amount', 'Closing Date', 'Probability (%)', 'Deal Owner', 'Created Time']); }}>Reset Column Size</MenuItem>
                         <MenuDivider />
                         <div className="px-3 py-1.5 text-[13px] font-medium text-ink-500 flex justify-between">Records Per Page <span className="text-ink-600 font-semibold">{pageSize} ▸</span></div>
                         <div className="pl-4 pr-2 pb-1 space-y-0.5">
@@ -629,11 +1109,13 @@ export default function Deals() {
                 </th>
               }
             />}
+
+            {/* 2. Kanban View */}
             {layout === 'kanban' && (
               <div className="p-3">
                 <p className="text-[12.5px] text-ink-500 mb-2.5">Drag a card to another column to change its stage. Probability updates to the stage default.</p>
                 <KanbanView groups={STAGES.map((s) => ({ key: s, label: s, color: STAGE_COLORS[s] }))} rows={table.sorted} groupOf={(d) => d.stage}
-                  onMove={changeStage} onCardClick={(d) => setViewing(d.id)} summary={(items) => `${fmtCompact(sumBy(items, (d) => d.amount))} · ${items.length} deals`}
+                  onMove={changeStage} onCardClick={(d) => openDeal(d.id)} summary={(items) => `${fmtCompact(sumBy(items, (d) => d.amount))} · ${items.length} deals`}
                   renderCard={(d) => (
                     <div>
                       <div className="text-[13.5px] font-semibold text-ink leading-snug">{d.name}</div>
@@ -644,17 +1126,169 @@ export default function Deals() {
                   )} />
               </div>
             )}
-            {layout === 'grid' && <div className="p-3"><GridView rows={table.pageRows} onCardClick={(d) => setViewing(d.id)} renderCard={(d) => (
-              <>
-                <div className="flex items-start justify-between gap-2"><div className="font-semibold text-ink leading-snug">{d.name}</div><StatusBadge kind="stage" value={d.stage} size="sm" /></div>
-                <div className="text-[12.5px] text-ink-500 mt-1">{accountName(d.accountId)}</div>
-                <div className="text-[19px] font-bold text-ink mt-3">{fmtINR(d.amount)}</div>
-                <div className="mt-2"><Probability deal={d} /></div>
-                <div className="mt-3 flex items-center justify-between text-[12px] text-ink-500"><span>Closes {fmtDate(d.closingDate)}</span><UserAvatar userId={d.ownerId} size={24} /></div>
-              </>
-            )} /></div>}
+
+            {/* 3. Grid View */}
+            {layout === 'grid' && (
+              <div className="p-3">
+                <GridView
+                  rows={table.pageRows}
+                  onCardClick={(d) => openDeal(d.id)}
+                  renderCard={(d) => (
+                    <div>
+                      <div className="flex items-start justify-between gap-2 mb-1.5">
+                        <h4 className="text-[14px] font-bold text-ink hover:text-primary truncate" title={d.name}>
+                          {d.name}
+                        </h4>
+                        <span className="text-[13.5px] font-extrabold text-ink shrink-0">
+                          {fmtINR(d.amount)}
+                        </span>
+                      </div>
+                      <div className="text-[12px] text-ink-500 mb-2 truncate">
+                        {accountName(d.accountId) || 'No Account'}{d.contactId ? ` · ${contactName(d.contactId)}` : ''}
+                      </div>
+                      <div className="flex items-center justify-between mt-2 pt-2 border-t border-line text-[11.5px]">
+                        <div className="flex items-center gap-1.5 truncate">
+                          <UserAvatar userId={d.ownerId} size={20} />
+                          <span className="truncate">{userName(d.ownerId)}</span>
+                        </div>
+                        <StatusBadge status={d.stage} tone={badgeTone(d.stage)} />
+                      </div>
+                    </div>
+                  )}
+                />
+              </div>
+            )}
+
+            {/* 4. Chart View */}
             {layout === 'chart' && <ChartView title="Deals by stage (filtered)" data={STAGES.map((s) => ({ name: s, value: filtered.filter((d) => d.stage === s).length, color: STAGE_COLORS[s] }))} valueLabel="Deals" />}
-            {(layout === 'list' || layout === 'grid') && <div className="px-4"><Pagination table={table} noun="deals" /></div>}
+
+            {/* 5. Timeline View */}
+            {layout === 'timeline' && (
+              <TimelineView
+                rows={table.sorted}
+                accountName={accountName}
+                contactName={contactName}
+                userName={userName}
+                onView={(id) => openDeal(id)}
+                onEdit={(d) => setForm({ mode: 'edit', record: d })}
+                onChangeStage={changeStage}
+              />
+            )}
+
+            {/* 6. Split View */}
+            {layout === 'split' && (
+              <SplitView
+                deals={table.sorted}
+                accountName={accountName}
+                contactName={contactName}
+                userName={userName}
+                onOpenDeal={(id) => openDeal(id)}
+                onEdit={(d) => setForm({ mode: 'edit', record: d })}
+              />
+            )}
+
+            {/* 7. Custom List View */}
+            {layout === 'custom_list' && (
+              <div>
+                {!activeCustomView && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 mx-3.5 my-3 bg-slate-50 border border-line rounded-xl text-[13px]">
+                    <div className="flex items-center gap-2">
+                      <SlidersHorizontal size={16} className="text-primary" />
+                      <span className="font-semibold text-ink">Custom List View:</span>
+                      <span className="text-ink-500">Configure or create custom list views with tailored column sets and filter criteria.</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setCustomViewModalOpen(true)}
+                      className="btn-primary h-8 px-3 rounded-md text-[12.5px] font-semibold flex items-center gap-1.5"
+                    >
+                      <Settings2 size={13} />
+                      <span>Manage Custom Views</span>
+                    </button>
+                  </div>
+                )}
+                <DataTable columns={columns} rows={table.pageRows} table={table} loading={refreshing} dense={dense} minWidth={1290} columnMenu={columnMenuConfig}
+                  emptyAction={<button className="btn-primary mt-2 h-9" onClick={() => setForm({ mode: 'create', record: blank() })}><Plus size={16} />Create Deal</button>}
+                  headerExtra={
+                    <th className="th w-[44px] text-center p-0">
+                      <Dropdown width={180} align="right" trigger={
+                        <button type="button" className="h-7 w-7 inline-flex items-center justify-center rounded border border-line bg-white hover:bg-page mt-1">
+                          <Settings2 size={15} className="text-ink-600" />
+                        </button>
+                      }>
+                        {(close) => (
+                          <div className="py-1">
+                            <MenuItem close={close} onClick={() => setManageColsOpen(true)}>Manage Columns</MenuItem>
+                            <MenuItem close={close} onClick={() => { localStorage.removeItem('deals_cols'); localStorage.removeItem('deals_pinned_cols'); setPinnedColumns([]); setVisibleColumns(['Deal Name', 'Account Name', 'Contact Name', 'Stage', 'Amount', 'Closing Date', 'Probability (%)', 'Deal Owner', 'Created Time']); }}>Reset Column Size</MenuItem>
+                            <MenuDivider />
+                            <div className="px-3 py-1.5 text-[13px] font-medium text-ink-500 flex justify-between">Records Per Page <span className="text-ink-600 font-semibold">{pageSize} ▸</span></div>
+                            <div className="pl-4 pr-2 pb-1 space-y-0.5">
+                               {[10, 25, 50, 100, 200].map(sz => <MenuItem key={sz} close={close} active={pageSize === sz} onClick={() => { setPageSize(sz); table.setPage(1); }}>{sz}</MenuItem>)}
+                            </div>
+                            <MenuDivider />
+                            <div className="px-3 py-1.5 text-[13px] font-medium text-ink-500 flex justify-between">View Mode <span className="text-ink-600 font-semibold">{wrapText ? 'Wrap Text' : 'No Wrap'} ▸</span></div>
+                            <div className="pl-4 pr-2 pb-1 space-y-0.5">
+                               <MenuItem close={close} active={wrapText} onClick={() => setWrapText(true)}>Wrap Text</MenuItem>
+                               <MenuItem close={close} active={!wrapText} onClick={() => setWrapText(false)}>No Wrap</MenuItem>
+                            </div>
+                          </div>
+                        )}
+                      </Dropdown>
+                    </th>
+                  }
+                />
+              </div>
+            )}
+
+            {/* 8. Tile View */}
+            {layout === 'tile' && (
+              <TileView
+                rows={table.pageRows}
+                accountName={accountName}
+                contactName={contactName}
+                userName={userName}
+                onView={(id) => openDeal(id)}
+                onEdit={(d) => setForm({ mode: 'edit', record: d })}
+                onChangeStage={changeStage}
+                onDelete={(d) => setConfirm({ ids: [d.id], label: d.name })}
+              />
+            )}
+
+            {/* 9. Table View */}
+            {layout === 'table' && (
+              <DataTable columns={columns} rows={table.pageRows} table={table} loading={refreshing} dense={true} minWidth={1290} columnMenu={columnMenuConfig}
+                emptyAction={<button className="btn-primary mt-2 h-9" onClick={() => setForm({ mode: 'create', record: blank() })}><Plus size={16} />Create Deal</button>}
+                headerExtra={
+                  <th className="th w-[44px] text-center p-0">
+                    <Dropdown width={180} align="right" trigger={
+                      <button type="button" className="h-7 w-7 inline-flex items-center justify-center rounded border border-line bg-white hover:bg-page mt-1">
+                        <Settings2 size={15} className="text-ink-600" />
+                      </button>
+                    }>
+                      {(close) => (
+                        <div className="py-1">
+                          <MenuItem close={close} onClick={() => setManageColsOpen(true)}>Manage Columns</MenuItem>
+                          <MenuItem close={close} onClick={() => { localStorage.removeItem('deals_cols'); localStorage.removeItem('deals_pinned_cols'); setPinnedColumns([]); setVisibleColumns(['Deal Name', 'Account Name', 'Contact Name', 'Stage', 'Amount', 'Closing Date', 'Probability (%)', 'Deal Owner', 'Created Time']); }}>Reset Column Size</MenuItem>
+                          <MenuDivider />
+                          <div className="px-3 py-1.5 text-[13px] font-medium text-ink-500 flex justify-between">Records Per Page <span className="text-ink-600 font-semibold">{pageSize} ▸</span></div>
+                          <div className="pl-4 pr-2 pb-1 space-y-0.5">
+                             {[10, 25, 50, 100, 200].map(sz => <MenuItem key={sz} close={close} active={pageSize === sz} onClick={() => { setPageSize(sz); table.setPage(1); }}>{sz}</MenuItem>)}
+                          </div>
+                          <MenuDivider />
+                          <div className="px-3 py-1.5 text-[13px] font-medium text-ink-500 flex justify-between">View Mode <span className="text-ink-600 font-semibold">{wrapText ? 'Wrap Text' : 'No Wrap'} ▸</span></div>
+                          <div className="pl-4 pr-2 pb-1 space-y-0.5">
+                             <MenuItem close={close} active={wrapText} onClick={() => setWrapText(true)}>Wrap Text</MenuItem>
+                             <MenuItem close={close} active={!wrapText} onClick={() => setWrapText(false)}>No Wrap</MenuItem>
+                          </div>
+                        </div>
+                      )}
+                    </Dropdown>
+                  </th>
+                }
+              />
+            )}
+
+            {(['list', 'grid', 'tile', 'table', 'custom_list'].includes(layout)) && <div className="px-4"><Pagination table={table} noun="deals" /></div>}
           </section>
         </div>
       </div>
@@ -665,6 +1299,49 @@ export default function Deals() {
         localStorage.setItem('deals_cols', JSON.stringify(cols));
         setManageColsOpen(false);
       }} />
+      <CustomViewsModal
+        open={customViewsModalOpen}
+        onClose={() => setCustomViewModalOpen(false)}
+        allColumns={ALL_COLUMNS}
+        customViews={customViews}
+        activeViewId={activeCustomView?.id}
+        onSaveView={handleSaveCustomView}
+        onDeleteView={handleDeleteCustomView}
+        onSelectView={handleSelectCustomView}
+        ownerOptions={ownerOptions}
+        dealAccounts={dealAccounts}
+      />
+      <ImportModal
+        open={importModalOpen}
+        onClose={() => setImportModalOpen(false)}
+        initialType={importType}
+        deals={deals}
+        accounts={accounts}
+        contacts={contacts}
+        users={users}
+        onImportDeals={handleImportDeals}
+        onImportDealsProducts={handleImportDealsProducts}
+        onImportNotes={handleImportNotes}
+      />
+      <SheetViewModal
+        open={sheetViewOpen}
+        onClose={() => setSheetViewOpen(false)}
+        deals={table.sorted}
+        accounts={accounts}
+        users={users}
+        accountName={accountName}
+        userName={userName}
+        onSaveUpdates={handleSaveSheetUpdates}
+      />
+      <PrintViewModal
+        open={printModalOpen}
+        onClose={() => setPrintModalOpen(false)}
+        initialMode={printMode}
+        deals={table.sorted}
+        accountName={accountName}
+        contactName={contactName}
+        userName={userName}
+      />
       <FormModal open={!!bulk} onClose={() => setBulk(null)} size="sm" title={bulk === 'owner' ? 'Change owner' : 'Change stage'} subtitle={`Applies to ${selectedIds.length} selected deals.`}
         fields={[bulk === 'owner' ? { name: 'value', label: 'New owner', type: 'select', options: ownerOptions, required: true, span: 2 } : { name: 'value', label: 'Stage', type: 'select', options: STAGES, required: true, span: 2 }]}
         initial={bulk ? { value: '' } : null} submitLabel="Apply"
