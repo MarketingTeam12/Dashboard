@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 
 export const MODULES = [
+  { path: '/reports', title: 'Reports', icon: LineChart, create: 'Create Report' },
   { path: '/contacts', title: 'Contacts', icon: Users, create: 'Create Contact' },
   { path: '/accounts', title: 'Accounts', icon: Building2, create: 'Create Account' },
   { path: '/deals', title: 'Deals', icon: CircleDollarSign, create: 'Create Deal' },
@@ -17,7 +18,7 @@ export const MODULES = [
 ];
 
 export const TOP_ITEMS = [
-  { title: 'Home', icon: Home }, { title: 'Workqueue', icon: ClipboardList }, { title: 'Reports', icon: LineChart },
+  { title: 'Home', icon: Home }, { title: 'Workqueue', icon: ClipboardList }, { title: 'Reports', icon: LineChart, path: '/reports' },
   { title: 'Analytics', icon: BarChart3 }, { title: 'Agents', icon: UserRound }, { title: 'MCP Server', icon: Server },
 ];
 

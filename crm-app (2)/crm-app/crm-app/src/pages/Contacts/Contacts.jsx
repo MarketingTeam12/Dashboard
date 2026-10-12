@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   AlertCircle, Bookmark, BookmarkPlus, CalendarCheck2, Check, ChevronDown,
   Download, Edit3, ExternalLink, Eye, FileSpreadsheet, Filter, FolderKanban,
@@ -9,10 +9,16 @@ import {
 } from 'lucide-react';
 import CreateContact from './CreateContact';
 import ContactDetail from './ContactDetail';
+import RecordTimeline from '../../components/common/RecordTimeline';
+import WhatsAppComposerModal, { WhatsAppIcon } from '../../components/common/WhatsAppComposerModal';
+import CSVImportModal from '../../components/common/CSVImportModal';
+import SpreadsheetView, { formatScreenshotDateTime } from '../../components/common/SpreadsheetView';
+import SplitView from '../../components/common/SplitView';
+import ModuleTimelineView from '../../components/common/ModuleTimelineView';
 import { useCRM } from '../../context/CRMContext';
-import PageHeader from '../../components/common/PageHeader';
-import DataTable from '../../components/common/DataTable';
-import Pagination from '../../components/common/Pagination';
+import PageHeader, { useHeaderBarMode } from '../../components/common/PageHeader';
+import DataTable, { ColumnChooserMenu, useColumnLayout } from '../../components/common/DataTable';
+import Pagination, { RecordSelectionSummary } from '../../components/common/Pagination';
 import useTable from '../../components/common/useTable';
 import StatusBadge from '../../components/common/StatusBadge';
 import { PersonAvatar, UserAvatar } from '../../components/common/Avatar';
@@ -22,7 +28,7 @@ import { Drawer, DetailGrid, SectionTitle } from '../../components/common/Modal'
 import Modal from '../../components/common/Modal';
 import Dropdown, { MenuDivider, MenuItem, MenuLabel } from '../../components/common/Dropdown';
 import BulkBar, { BulkButton } from '../../components/common/BulkBar';
-import { ChartView, GridView, KanbanView } from '../../components/common/Views';
+import { ChartView, GridStatusPill, GridView, KanbanView } from '../../components/common/Views';
 import { useRefresh } from '../../components/common/hooks';
 import { useToast } from '../../components/common/Toast';
 import { LEAD_SOURCES, LIFECYCLES, SALUTATIONS, VENDORS } from '../../data/seedData';
@@ -124,6 +130,7 @@ export default function Contacts({ isCreatePage = false }) {
     users,
     contactRelations = {},
     savedContactViews = [],
+    savedContactSplitViews = [],
     accountsById,
     usersById,
     contactsById,
@@ -135,10 +142,13 @@ export default function Contacts({ isCreatePage = false }) {
     saveContactView,
     renameContactView,
     deleteContactView,
+    saveContactSplitView,
+    deleteContactSplitView,
     addContactRelatedRecord,
   } = crm;
 
   const navigate = useNavigate();
+  const location = useLocation();
   const { contactId: routeContactId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const toast = useToast();
@@ -151,8 +161,8 @@ export default function Contacts({ isCreatePage = false }) {
   const isCreate =
     isCreatePage ||
     createViewOpen ||
-    window.location.pathname.endsWith('/create') ||
-    window.location.pathname.endsWith('/new') ||
+    location.pathname.endsWith('/create') ||
+    location.pathname.endsWith('/new') ||
     searchParams.get('create') === '1' ||
     searchParams.get('mode') === 'create';
 
@@ -160,9 +170,10 @@ export default function Contacts({ isCreatePage = false }) {
   const [selectedMapCity, setSelectedMapCity] = useState('All');
 
   const [savedView, setSavedView] = useState(() => searchParams.get('view') || persisted?.savedView || 'all');
-  const [layout, setLayout] = useState('list');
+  const [layout, setLayout] = useState(() => persisted?.layout || 'list');
   const [dense, setDense] = useState(true);
   const [panelOpen, setPanelOpen] = useState(true);
+  const [headerMode, setHeaderMode] = useHeaderBarMode('contacts', 'fixed');
 
   // Search & popover controls:
   // 1. filterSearch searches filter headings in left sidebar
@@ -198,25 +209,63 @@ export default function Contacts({ isCreatePage = false }) {
   const [enforcePermissions, setEnforcePermissions] = useState(false);
 
   // Modals & Drawers - default hidden columns leaves the 9 Screenshot 1 columns visible
-  const [hidden, setHidden] = useState(
-    () => new Set(['account', 'name', 'phone', 'lifecycle', 'department', 'lastContacted', 'followUp', 'vendorName'])
+  const CONTACT_COLUMN_CATALOG = useMemo(
+    () => [
+      { key: 'createdTime', label: 'Created Time', width: 175 },
+      { key: 'owner', label: 'Contact Owner', width: 150 },
+      { key: 'firstName', label: 'First Name', width: 130 },
+      { key: 'lastName', label: 'Last Name', width: 130 },
+      { key: 'mobile', label: 'Mobile', width: 140 },
+      { key: 'email', label: 'Email', width: 200 },
+      { key: 'leadSource', label: 'Lead Source', width: 130 },
+      { key: 'leadManager1', label: 'Lead Manager 1', width: 155 },
+      { key: 'city', label: 'City', width: 130 },
+      { key: 'account', label: 'Account Name', width: 170 },
+      { key: 'name', label: 'Full Contact Name', width: 200 },
+      { key: 'phone', label: 'Phone', width: 140 },
+      { key: 'lifecycle', label: 'Lifecycle Stage', width: 130 },
+      { key: 'department', label: 'Department', width: 130 },
+      { key: 'lastContacted', label: 'Last Contacted', width: 140 },
+      { key: 'followUp', label: 'Follow-up Indicator', width: 90 },
+      { key: 'vendorName', label: 'Vendor Name', width: 140 },
+    ],
+    []
+  );
+  const {
+    order: columnOrder,
+    hidden,
+    widths: columnWidths,
+    toggleColumn,
+    reorderColumns,
+    moveColumnByOffset,
+    setColumnWidth,
+    resetColumns,
+  } = useColumnLayout(
+    'list-contacts',
+    CONTACT_COLUMN_CATALOG.map((c) => c.key),
+    ['account', 'name', 'phone', 'lifecycle', 'department', 'lastContacted', 'followUp', 'vendorName'],
+    Object.fromEntries(CONTACT_COLUMN_CATALOG.map((c) => [c.key, c.width]))
   );
   const [contactModal, setContactModal] = useState(null); // { mode: 'create'|'edit', record }
   const [viewingId, setViewingId] = useState(null);
   const [detailTab, setDetailTab] = useState('overview');
+  const [timelineContactId, setTimelineContactId] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [bulkMode, setBulkMode] = useState(null); // 'owner' | 'lifecycle' | 'department'
   const [bulkValue, setBulkValue] = useState('');
   const [builderOpen, setBuilderOpen] = useState(false);
   const [saveViewModal, setSaveViewModal] = useState(null); // { mode: 'create'|'rename', id?, name: '' }
   const [composeEmail, setComposeEmail] = useState(null); // { contact, subject: '', body: '' }
+  const [whatsappContact, setWhatsappContact] = useState(null);
   const [noteText, setNoteText] = useState('');
+  const [csvImportOpen, setCsvImportOpen] = useState(false);
 
   // Open a specific contact's detail page using its real ID and sync URL
-  const openContactDetail = (id) => {
+  const openContactDetail = (id, tab = 'overview') => {
     if (!id) return;
     setViewingId(id);
-    setDetailTab('overview');
+    setTimelineContactId(id);
+    setDetailTab(tab);
     navigate(`/contacts/${id}`);
   };
 
@@ -269,11 +318,8 @@ export default function Contacts({ isCreatePage = false }) {
         : openParam;
 
     if (create) {
-      openCreateModal(searchParams.get('account') || '');
-      const next = new URLSearchParams(searchParams);
-      next.delete('create');
-      next.delete('account');
-      setSearchParams(next, { replace: true });
+      setViewingId(null);
+      setCreateViewOpen(true);
     } else if (paramId) {
       const c = contacts.find((x) => x.id === paramId);
       if (c) setViewingId(c.id);
@@ -287,6 +333,7 @@ export default function Contacts({ isCreatePage = false }) {
   useEffect(() => {
     savePersistedFilterState({
       savedView,
+      layout,
       tableSearch,
       sysFilters: [...sysFilters],
       websiteConfigs,
@@ -295,7 +342,7 @@ export default function Contacts({ isCreatePage = false }) {
       builderRules,
       globalJoin,
     });
-  }, [savedView, tableSearch, sysFilters, websiteConfigs, fieldConfigs, relatedConfigs, builderRules, globalJoin]);
+  }, [savedView, layout, tableSearch, sysFilters, websiteConfigs, fieldConfigs, relatedConfigs, builderRules, globalJoin]);
 
   // Filter catalog search results (Left Sidebar & Popover)
   const catalogMatch = useMemo(() => searchFilterCatalog(filterSearch), [filterSearch]);
@@ -424,6 +471,7 @@ export default function Contacts({ isCreatePage = false }) {
       createdOn: (c) => c.createdTime || c.createdOn || '',
       mailingCity: (c) => c.city || c.mailingCity || '',
       department: (c) => c.department || '',
+      designation: (c) => c.designation || '',
     }),
     [accountName, userName]
   );
@@ -951,6 +999,7 @@ export default function Contacts({ isCreatePage = false }) {
     { label: 'View details', icon: Eye, onClick: () => openContactDetail(c.id) },
     { label: 'Edit contact', icon: Pencil, onClick: () => openEditModal(c) },
     { label: 'Send email', icon: Mail, onClick: () => setComposeEmail({ contact: c, subject: `Following up with ${accountName(c.accountId)}`, body: `Hi ${c.firstName || c.name},\n\nFollowing up regarding our recent conversation.\n\nBest regards,\n${activeUser.name}` }) },
+    { label: 'Send WhatsApp', icon: WhatsAppIcon, onClick: () => setWhatsappContact(c) },
     { label: 'Log a call', icon: Phone, onClick: () => navigate(`/calls?create=1&contact=${c.id}`) },
     {
       label: c.followUp ? 'Clear follow-up' : 'Follow up tomorrow',
@@ -1189,59 +1238,354 @@ export default function Contacts({ isCreatePage = false }) {
       width: 140,
       render: (c) => <span className="text-[12.5px]">{c.vendorName || '—'}</span>,
     },
-  ].filter((c) => !hidden.has(c.key));
+  ]
+    .sort((a, b) => {
+      const idxA = columnOrder.indexOf(a.key);
+      const idxB = columnOrder.indexOf(b.key);
+      return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
+    })
+    .filter((c) => !hidden.has(c.key));
+
+  // ==================== EXCEL-STYLE SPREADSHEET COLUMNS & HANDLERS ====================
+  const spreadsheetColumns = useMemo(
+    () => [
+      {
+        key: 'createdTime',
+        header: 'Created Time',
+        headerLabel: 'Created Time',
+        type: 'date',
+        sortable: true,
+        width: 175,
+        getValue: (c) => c.createdTime || c.createdOn || '2026-10-10',
+        renderCell: (c) => (
+          <span className="text-[12.5px] text-ink whitespace-nowrap">
+            {formatScreenshotDateTime(c.createdTime || c.createdOn || '2026-10-10')}
+          </span>
+        ),
+      },
+      {
+        key: 'owner',
+        header: 'Contact Owner',
+        headerLabel: 'Contact Owner',
+        type: 'select',
+        sortable: true,
+        width: 155,
+        options: users.map((u) => ({ value: u.id, label: u.name })),
+        getValue: (c) => c.ownerId || 'u1',
+        renderCell: (c) => (
+          <span className="text-[12.5px] text-ink whitespace-nowrap">
+            {userName(c.ownerId) || 'Sales Team'}
+          </span>
+        ),
+      },
+      {
+        key: 'firstName',
+        header: 'First Name',
+        headerLabel: 'First Name',
+        type: 'text',
+        sortable: true,
+        width: 135,
+        getValue: (c) => c.firstName || '',
+        renderCell: (c) => (
+          <span className="font-medium text-ink text-[12.5px] whitespace-nowrap">
+            {c.firstName || '—'}
+          </span>
+        ),
+        renderAccessory: (c) => (
+          <Link
+            to={`/contacts/${c.id}`}
+            onClick={() => openContactDetail(c.id)}
+            title={`Open details for ${c.name}`}
+            className="text-ink-400 hover:text-primary p-0.5 rounded"
+          >
+            <ExternalLink size={11.5} />
+          </Link>
+        ),
+      },
+      {
+        key: 'lastName',
+        header: 'Last Name',
+        headerLabel: 'Last Name',
+        badge: 'aa ▾',
+        type: 'text',
+        sortable: true,
+        width: 165,
+        getValue: (c) => c.lastName || c.name || '',
+        renderCell: (c) => (
+          <span className="font-medium text-primary text-[13px] whitespace-nowrap">
+            {c.lastName || c.name || '—'}
+          </span>
+        ),
+        renderAccessory: (c) => (
+          <Link
+            to={`/contacts/${c.id}`}
+            onClick={() => openContactDetail(c.id)}
+            title={`Open details for ${c.name}`}
+            className="text-primary/70 hover:text-primary p-0.5 rounded"
+          >
+            <ExternalLink size={11.5} />
+          </Link>
+        ),
+      },
+      {
+        key: 'mobile',
+        header: 'Mobile',
+        headerLabel: 'Mobile',
+        type: 'phone',
+        sortable: true,
+        width: 175,
+        getValue: (c) => c.mobile || c.phone || '',
+        renderCell: (c, val) => (
+          <span className="text-[12.5px] text-ink font-mono whitespace-nowrap">{val || '—'}</span>
+        ),
+        renderAccessory: (c, val) =>
+          val ? (
+            <a
+              href={`tel:${String(val).replace(/\s/g, '')}`}
+              title={`Call ${val}`}
+              className="w-4 h-4 rounded-full bg-[#10B981] hover:bg-[#059669] text-white flex items-center justify-center shrink-0 shadow-2xs transition-colors"
+            >
+              <Phone size={9} className="fill-current text-white" />
+            </a>
+          ) : null,
+      },
+      {
+        key: 'email',
+        header: 'Email',
+        headerLabel: 'Email',
+        type: 'email',
+        sortable: true,
+        width: 220,
+        getValue: (c) => c.email || '',
+        renderCell: (c, val) => (
+          <span className="text-[12.5px] text-ink truncate block">{val || '—'}</span>
+        ),
+      },
+      {
+        key: 'leadSource',
+        header: 'Lead Source',
+        headerLabel: 'Lead Source',
+        type: 'select',
+        sortable: true,
+        width: 150,
+        options: LEAD_SOURCES.map((s) => ({
+          value: s,
+          label: s === 'Website' ? 'Database calls (Website)' : s,
+        })),
+        getValue: (c) => c.leadSource || 'Website',
+        renderCell: (c) => {
+          const src = c.leadSource || 'Website';
+          const isClientRef =
+            src.toLowerCase().includes('referral') || src.toLowerCase().includes('client');
+          const badgeStyle = isClientRef
+            ? 'bg-[#E0F2FE] text-[#0284C7] border-[#BAE6FD]'
+            : 'bg-[#F1F5F9] text-[#475569] border-[#E2E8F0]';
+          return (
+            <span
+              className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-medium border whitespace-nowrap ${badgeStyle}`}
+            >
+              {src === 'Website' ? 'Database calls' : src}
+            </span>
+          );
+        },
+      },
+      {
+        key: 'leadManager1',
+        header: 'Lead Manager 1',
+        headerLabel: 'Lead Manager 1',
+        type: 'select',
+        sortable: true,
+        width: 150,
+        options: users.map((u) => ({ value: u.id, label: u.name })),
+        getValue: (c) => c.leadManager1 || 'u2',
+        renderCell: (c) => (
+          <span className="text-[12.5px] text-ink-600 whitespace-nowrap">
+            {c.leadManager1 ? userName(c.leadManager1) || c.leadManager1 : '—'}
+          </span>
+        ),
+      },
+      {
+        key: 'account',
+        header: 'Account Name',
+        headerLabel: 'Account Name',
+        type: 'select',
+        sortable: true,
+        width: 185,
+        options: accounts.map((a) => ({ value: a.id, label: a.name })),
+        getValue: (c) => c.accountId || '',
+        renderCell: (c) => (
+          <span className="text-[12.5px] font-medium text-ink-700 truncate block">
+            {accountName(c.accountId) || '—'}
+          </span>
+        ),
+        renderAccessory: (c) =>
+          c.accountId ? (
+            <Link
+              to={`/accounts?open=${c.accountId}`}
+              title={`Open Account: ${accountName(c.accountId)}`}
+              className="text-[#1262E0] hover:text-[#0E4FB5] p-0.5 rounded"
+            >
+              <ExternalLink size={11.5} />
+            </Link>
+          ) : null,
+      },
+      {
+        key: 'lifecycle',
+        header: 'Lifecycle Stage',
+        headerLabel: 'Lifecycle Stage',
+        type: 'select',
+        sortable: true,
+        width: 140,
+        options: LIFECYCLES.map((l) => ({ value: l, label: l })),
+        getValue: (c) => c.lifecycle || 'New',
+        renderCell: (c) => <StatusBadge kind="lifecycle" value={c.lifecycle} className="min-w-[80px]" />,
+      },
+      {
+        key: 'designation',
+        header: 'Title',
+        headerLabel: 'Title',
+        type: 'text',
+        sortable: true,
+        width: 155,
+        getValue: (c) => c.designation || '',
+        renderCell: (c, val) => <span className="text-[12.5px] text-ink-600">{val || '—'}</span>,
+      },
+      {
+        key: 'city',
+        header: 'City',
+        headerLabel: 'City',
+        type: 'text',
+        sortable: true,
+        width: 130,
+        getValue: (c) => c.city || c.mailingCity || '',
+        renderCell: (c, val) => <span className="text-[12.5px] text-ink-700">{val || '—'}</span>,
+      },
+      {
+        key: 'lastContacted',
+        header: 'Last Contacted',
+        headerLabel: 'Last Contacted',
+        type: 'date',
+        sortable: true,
+        width: 140,
+        getValue: (c) => c.lastContacted || '',
+        renderCell: (c) => (
+          <span className="text-[12.5px] whitespace-nowrap">{fmtDate(c.lastContacted)}</span>
+        ),
+      },
+    ],
+    [users, accounts, userName, accountName]
+  );
+
+  const handleSpreadsheetSaveContactCell = (contact, col, newValue) => {
+    const now = todayISO();
+    const patch = { modifiedTime: now, touched: true };
+
+    if (col.key === 'createdTime') {
+      patch.createdTime = newValue;
+      patch.createdOn = newValue;
+    } else if (col.key === 'owner') {
+      patch.ownerId = newValue;
+      patch.contactOwner = newValue;
+    } else if (col.key === 'firstName') {
+      const fullName = [newValue, contact.lastName].filter(Boolean).join(' ').trim() || newValue;
+      patch.firstName = newValue;
+      patch.name = fullName;
+      patch.contactName = fullName;
+    } else if (col.key === 'lastName') {
+      const fullName = [contact.firstName, newValue].filter(Boolean).join(' ').trim() || newValue;
+      patch.lastName = newValue;
+      patch.name = fullName;
+      patch.contactName = fullName;
+    } else if (col.key === 'mobile') {
+      patch.mobile = newValue;
+      if (!contact.phone) patch.phone = newValue;
+    } else if (col.key === 'email') {
+      patch.email = newValue;
+    } else if (col.key === 'leadSource') {
+      patch.leadSource = newValue;
+    } else if (col.key === 'leadManager1') {
+      patch.leadManager1 = newValue;
+    } else if (col.key === 'account') {
+      const matchedAcc =
+        accountsById[newValue] ||
+        accounts.find(
+          (a) =>
+            a.id === newValue ||
+            String(a.name || '').trim().toLowerCase() === String(newValue || '').trim().toLowerCase()
+        );
+      if (matchedAcc) {
+        patch.accountId = matchedAcc.id;
+        patch.accountName = matchedAcc.name;
+      }
+    } else if (col.key === 'lifecycle') {
+      patch.lifecycle = newValue;
+    } else if (col.key === 'designation') {
+      patch.designation = newValue;
+    } else if (col.key === 'city') {
+      patch.city = newValue;
+      patch.mailingCity = newValue;
+    } else if (col.key === 'lastContacted') {
+      patch.lastContacted = newValue;
+    } else {
+      patch[col.key] = newValue;
+    }
+
+    updateRecord('contacts', contact.id, patch);
+    toast.success(`Updated ${col.headerLabel || col.header} for ${patch.name || contact.name}`);
+  };
+
+  const handleSpreadsheetAddContact = (draft) => {
+    const fName = String(draft.firstName || '').trim();
+    const lName = String(draft.lastName || '').trim();
+    if (!fName && !lName) {
+      return { error: 'Please enter at least a First Name or Last Name.' };
+    }
+    const emailVal = String(draft.email || '').trim();
+    if (emailVal && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(emailVal)) {
+      return { error: 'Please enter a valid Email address.' };
+    }
+    const fullName = [fName, lName].filter(Boolean).join(' ').trim();
+    const acc = accounts[0];
+    const now = draft.createdTime || todayISO();
+    const created = createRecord('contacts', {
+      salutation: 'Mr.',
+      firstName: fName || fullName,
+      lastName: lName || fullName,
+      name: fullName,
+      contactName: fullName,
+      accountId: acc?.id || '',
+      accountName: acc?.name || '',
+      ownerId: draft.owner || activeUser?.id || 'u1',
+      contactOwner: draft.owner || activeUser?.id || 'u1',
+      mobile: draft.mobile || '+91 98400 11111',
+      phone: draft.mobile || '+91 98400 11111',
+      email: emailVal || `${(fName || 'contact').toLowerCase()}@company.in`,
+      leadSource: draft.leadSource || 'Website',
+      leadManager1: draft.leadManager1 || 'u2',
+      lifecycle: 'New',
+      designation: 'Executive',
+      department: 'Sales',
+      city: 'Chennai',
+      mailingCity: 'Chennai',
+      createdOn: now,
+      createdTime: now,
+      lastContacted: now,
+    });
+    toast.success(`Contact "${created.name}" added to spreadsheet`);
+    table.setPage(1);
+    return { created };
+  };
 
   const columnChooser = (
-    <Dropdown
-      width={240}
-      align="right"
-      trigger={
-        <button
-          type="button"
-          aria-label="Choose columns"
-          className="p-1.5 rounded-md text-ink-600 hover:bg-white hover:text-primary"
-        >
-          <SlidersHorizontal size={16} />
-        </button>
-      }
-    >
-      <MenuLabel>Visible columns</MenuLabel>
-      {[
-        ['createdTime', 'Created Time'],
-        ['owner', 'Contact Owner'],
-        ['firstName', 'First Name'],
-        ['lastName', 'Last Name'],
-        ['mobile', 'Mobile'],
-        ['email', 'Email'],
-        ['leadSource', 'Lead Source'],
-        ['leadManager1', 'Lead Manager 1'],
-        ['city', 'City'],
-        ['account', 'Account Name'],
-        ['name', 'Full Contact Name'],
-        ['phone', 'Phone'],
-        ['lifecycle', 'Lifecycle Stage'],
-        ['department', 'Department'],
-        ['lastContacted', 'Last Contacted'],
-        ['followUp', 'Follow-up Indicator'],
-        ['vendorName', 'Vendor Name'],
-      ].map(([k, l]) => (
-        <label key={k} className="flex items-center gap-2.5 px-3 py-1.5 text-[12.5px] text-ink hover:bg-page cursor-pointer">
-          <input
-            type="checkbox"
-            className="cb"
-            checked={!hidden.has(k)}
-            onChange={() =>
-              setHidden((h) => {
-                const n = new Set(h);
-                n.has(k) ? n.delete(k) : n.add(k);
-                return n;
-              })
-            }
-          />
-          {l}
-        </label>
-      ))}
-    </Dropdown>
+    <ColumnChooserMenu
+      allColumns={CONTACT_COLUMN_CATALOG}
+      columnOrder={columnOrder}
+      hiddenSet={hidden}
+      onToggleColumn={toggleColumn}
+      onReorderColumns={reorderColumns}
+      onMoveColumn={moveColumnByOffset}
+      onResetColumns={resetColumns}
+    />
   );
 
   const columns = [
@@ -1263,6 +1607,19 @@ export default function Contacts({ isCreatePage = false }) {
   const viewingRec = activeContactId ? contacts.find((c) => c.id === activeContactId) || null : null;
   const selectedIds = [...table.selected];
 
+  const timelineContactsPool = filtered.length > 0 ? filtered : contacts;
+  const selectedTimelineContact = useMemo(() => {
+    if (timelineContactId) {
+      const found = contacts.find((c) => c.id === timelineContactId);
+      if (found) return found;
+    }
+    if (selectedIds.length > 0) {
+      const found = contacts.find((c) => c.id === selectedIds[0]);
+      if (found) return found;
+    }
+    return timelineContactsPool[0] || null;
+  }, [timelineContactId, selectedIds, timelineContactsPool, contacts]);
+
   // Sections visibility in left filter panel (auto-expand when filterSearch has matches)
   const isSearchingCatalog = filterSearch.trim().length > 0;
   const showSysSection = isSearchingCatalog ? catalogMatch.systemFilters.length > 0 : sysOpen;
@@ -1271,26 +1628,17 @@ export default function Contacts({ isCreatePage = false }) {
   const showRelatedSection = isSearchingCatalog ? catalogMatch.relatedFilters.length > 0 : relatedOpen;
 
   if (isCreate) {
+    const prefillAccountId = searchParams.get('account');
     return (
       <CreateContact
+        initialRecord={prefillAccountId ? { accountId: prefillAccountId } : undefined}
         onCancel={() => {
           setCreateViewOpen(false);
-          if (searchParams.get('create') || searchParams.get('mode')) {
-            const next = new URLSearchParams(searchParams);
-            next.delete('create');
-            next.delete('mode');
-            setSearchParams(next, { replace: true });
-          }
           navigate('/contacts');
         }}
-        onSuccess={(newId) => {
+        onSuccess={(createdOrId) => {
           setCreateViewOpen(false);
-          if (searchParams.get('create') || searchParams.get('mode')) {
-            const next = new URLSearchParams(searchParams);
-            next.delete('create');
-            next.delete('mode');
-            setSearchParams(next, { replace: true });
-          }
+          const newId = typeof createdOrId === 'string' ? createdOrId : createdOrId?.id;
           if (newId) {
             openContactDetail(newId);
           } else {
@@ -1308,6 +1656,7 @@ export default function Contacts({ isCreatePage = false }) {
         contactsList={table.sorted}
         onBack={closeContactDetail}
         onSelectContact={openContactDetail}
+        initialTab={detailTab}
       />
     );
   }
@@ -1318,6 +1667,8 @@ export default function Contacts({ isCreatePage = false }) {
         views={allViews}
         view={savedView}
         onViewChange={handleSelectView}
+        headerMode={headerMode}
+        onHeaderModeChange={setHeaderMode}
         tabMenu={[
           {
             label: 'Save current filters as view',
@@ -1361,7 +1712,7 @@ export default function Contacts({ isCreatePage = false }) {
           ],
           sort: table.sort,
           onSort: table.setSort,
-          layouts: ['list', 'kanban', 'grid', 'chart'],
+          layouts: ['list', 'spreadsheet', 'kanban', 'grid', 'split', 'timeline', 'chart'],
           layout,
           onLayout: setLayout,
           onRefresh: refresh,
@@ -1371,9 +1722,11 @@ export default function Contacts({ isCreatePage = false }) {
           module: 'Contacts',
           primary: {
             label: 'Create Contact',
+            testId: 'create-contact-btn',
             onClick: () => navigate('/contacts/create'),
             menu: [
               { label: 'Create Contact', icon: Plus, onClick: () => navigate('/contacts/create') },
+              { label: 'Import Contacts (CSV)', icon: Upload, testId: 'import-contacts-csv-menu-item', onClick: () => setCsvImportOpen(true) },
               { label: 'Save Custom Filter View', icon: BookmarkPlus, onClick: () => setSaveViewModal({ mode: 'create', name: '' }) },
               { label: 'Export filtered contacts (CSV)', icon: Download, onClick: () => exportRows(table.sorted) },
             ],
@@ -1422,8 +1775,8 @@ export default function Contacts({ isCreatePage = false }) {
 
       {/* Secondary Enterprise Sub-bar: Table Search, Active Filter Summary, Join Logic, Role Access Control */}
       <div className="card px-3 py-2 mb-3 flex flex-wrap items-center justify-between gap-2.5 text-[12.5px]">
-        <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[240px]">
-          <div className="relative w-full sm:w-[260px]">
+        <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[200px]">
+          <div className="relative w-full sm:w-[280px]">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-400 pointer-events-none" />
             <input
               type="search"
@@ -1447,557 +1800,10 @@ export default function Contacts({ isCreatePage = false }) {
               </button>
             )}
           </div>
-
-          {/* Clearly visible Filter Button directly beside Search Bar */}
-          <div className="relative">
-            <button
-              ref={filterBtnRef}
-              type="button"
-              onClick={() => setFilterMenuOpen((prev) => !prev)}
-              aria-expanded={filterMenuOpen}
-              aria-haspopup="dialog"
-              aria-label="Filter contacts"
-              className={`h-8 px-3 rounded-lg border text-[12.5px] font-medium inline-flex items-center gap-1.5 transition-colors ${
-                filterMenuOpen || activeFilterCount > 0
-                  ? 'border-primary bg-primary-50 text-primary'
-                  : 'border-line bg-white hover:bg-page text-ink-600'
-              }`}
-            >
-              <SlidersHorizontal size={13.5} className="text-primary" />
-              <span>Filter</span>
-              {activeFilterCount > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full bg-primary text-white text-[11px] font-semibold">
-                  {activeFilterCount}
-                </span>
-              )}
-              <ChevronDown
-                size={13}
-                className={`transition-transform duration-200 ${filterMenuOpen ? 'rotate-180' : ''}`}
-              />
-            </button>
-
-            {/* Filter Menu Popover (Desktop) / Modal Drawer (Mobile) */}
-            {filterMenuOpen && (
-              <div className="fixed inset-0 z-50 sm:absolute sm:inset-auto sm:top-full sm:left-0 sm:mt-1.5 flex items-end sm:items-start justify-center">
-                {/* Mobile Backdrop */}
-                <div
-                  className="fixed inset-0 bg-black/40 backdrop-blur-sm sm:hidden"
-                  onClick={() => setFilterMenuOpen(false)}
-                />
-
-                {/* Popover / Drawer Container */}
-                <div
-                  ref={filterMenuRef}
-                  role="dialog"
-                  aria-modal="true"
-                  aria-label="Filter Contacts"
-                  className="relative z-10 w-full sm:w-[780px] max-w-[96vw] max-h-[85vh] sm:max-h-[620px] bg-white rounded-t-2xl sm:rounded-xl shadow-2xl border border-line flex flex-col overflow-hidden text-ink animate-in fade-in zoom-in-95 duration-150"
-                >
-                  {/* Popover Header */}
-                  <div className="flex items-center justify-between px-4 py-3 border-b border-line bg-page-soft/60">
-                    <div className="flex items-center gap-2">
-                      <SlidersHorizontal size={15} className="text-primary" />
-                      <h3 className="text-[14px] font-semibold text-ink">Filter Contacts</h3>
-                      {activeFilterCount > 0 && (
-                        <span className="px-1.5 py-0.5 rounded-full bg-primary-100 text-primary text-[11px] font-semibold">
-                          {activeFilterCount} Active
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {activeFilterCount > 0 && (
-                        <button
-                          type="button"
-                          onClick={clearAllFilters}
-                          className="text-[12px] text-ink-500 hover:text-danger font-medium hover:underline mr-1"
-                        >
-                          Clear All
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => setFilterMenuOpen(false)}
-                        aria-label="Close filters"
-                        className="p-1 rounded-md text-ink-400 hover:text-ink hover:bg-page"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Filter Search Box & Category Tabs */}
-                  <div className="p-3 border-b border-line bg-white space-y-2.5">
-                    {/* Search box for filter names */}
-                    <div className="relative">
-                      <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-400 pointer-events-none" />
-                      <input
-                        type="text"
-                        value={filterMenuSearch}
-                        onChange={(e) => setFilterMenuSearch(e.target.value)}
-                        placeholder="Search filter options across all 4 categories..."
-                        aria-label="Search filter options"
-                        className="input h-8 pl-8 pr-7 text-[12.5px] w-full"
-                        autoFocus
-                      />
-                      {filterMenuSearch && (
-                        <button
-                          type="button"
-                          onClick={() => setFilterMenuSearch('')}
-                          aria-label="Clear filter search"
-                          className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink"
-                        >
-                          <X size={13} />
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Category Tabs: All, System Defined, Website Activity, Fields, Related Modules */}
-                    <div className="flex items-center gap-1.5 overflow-x-auto thin-scroll pb-0.5 text-[11.5px]">
-                      <button
-                        type="button"
-                        onClick={() => setActiveCategoryTab('all')}
-                        className={`px-2.5 py-1 rounded-full whitespace-nowrap font-medium transition-colors ${
-                          activeCategoryTab === 'all'
-                            ? 'bg-primary text-white'
-                            : 'bg-page hover:bg-page-hover text-ink-600'
-                        }`}
-                      >
-                        All ({catalogMatchMenu.totalMatches})
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setActiveCategoryTab('system')}
-                        className={`px-2.5 py-1 rounded-full whitespace-nowrap font-medium transition-colors ${
-                          activeCategoryTab === 'system'
-                            ? 'bg-primary text-white'
-                            : 'bg-page hover:bg-page-hover text-ink-600'
-                        }`}
-                      >
-                        System Defined ({catalogMatchMenu.systemFilters.length})
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setActiveCategoryTab('website')}
-                        className={`px-2.5 py-1 rounded-full whitespace-nowrap font-medium transition-colors ${
-                          activeCategoryTab === 'website'
-                            ? 'bg-primary text-white'
-                            : 'bg-page hover:bg-page-hover text-ink-600'
-                        }`}
-                      >
-                        Website Activity ({catalogMatchMenu.websiteActivityFilters.length})
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setActiveCategoryTab('fields')}
-                        className={`px-2.5 py-1 rounded-full whitespace-nowrap font-medium transition-colors ${
-                          activeCategoryTab === 'fields'
-                            ? 'bg-primary text-white'
-                            : 'bg-page hover:bg-page-hover text-ink-600'
-                        }`}
-                      >
-                        Fields ({catalogMatchMenu.fieldFilters.length})
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setActiveCategoryTab('related')}
-                        className={`px-2.5 py-1 rounded-full whitespace-nowrap font-medium transition-colors ${
-                          activeCategoryTab === 'related'
-                            ? 'bg-primary text-white'
-                            : 'bg-page hover:bg-page-hover text-ink-600'
-                        }`}
-                      >
-                        Related Modules ({catalogMatchMenu.relatedFilters.length})
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Body: Split View (Options List on left, Selected Filter Builder on right) */}
-                  <div className="grid grid-cols-1 sm:grid-cols-12 flex-1 min-h-0 overflow-hidden divide-y sm:divide-y-0 sm:divide-x divide-line">
-                    {/* Left Pane: Filter Options Catalog */}
-                    <div className="sm:col-span-5 flex flex-col min-h-0 max-h-[300px] sm:max-h-[360px] overflow-y-auto thin-scroll p-2 bg-page-soft/30">
-                      <div className="text-[11px] font-semibold text-ink-400 uppercase tracking-wider px-2 py-1">
-                        Select a filter to add:
-                      </div>
-
-                      {catalogMatchMenu.totalMatches === 0 ? (
-                        <div className="py-8 text-center text-[12px] text-ink-400">
-                          No matching filter options
-                        </div>
-                      ) : (
-                        <div className="space-y-0.5">
-                          {/* SYSTEM DEFINED FILTERS */}
-                          {(activeCategoryTab === 'all' || activeCategoryTab === 'system') &&
-                            catalogMatchMenu.systemFilters.map((s) => {
-                              const inRules = builderRules.some((r) => r.field === s.key);
-                              return (
-                                <button
-                                  key={s.key}
-                                  type="button"
-                                  onClick={() => addFilterRuleFromOption('system', s)}
-                                  className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left text-[12px] hover:bg-white hover:shadow-xs transition-colors group"
-                                >
-                                  <div className="min-w-0 pr-1">
-                                    <div className="font-medium text-ink group-hover:text-primary truncate">
-                                      <HighlightMatch text={s.label} query={filterMenuSearch} />
-                                    </div>
-                                    <div className="text-[10.5px] text-ink-400">System Defined</div>
-                                  </div>
-                                  <span className="shrink-0 text-[11px] font-medium text-primary px-1.5 py-0.5 rounded bg-primary-50 group-hover:bg-primary group-hover:text-white transition-colors">
-                                    {inRules ? 'Added +' : '+ Add'}
-                                  </span>
-                                </button>
-                              );
-                            })}
-
-                          {/* WEBSITE ACTIVITY FILTERS */}
-                          {(activeCategoryTab === 'all' || activeCategoryTab === 'website') &&
-                            catalogMatchMenu.websiteActivityFilters.map((w) => {
-                              const inRules = builderRules.some((r) => r.field === w.key);
-                              return (
-                                <button
-                                  key={w.key}
-                                  type="button"
-                                  onClick={() => addFilterRuleFromOption('website', w)}
-                                  className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left text-[12px] hover:bg-white hover:shadow-xs transition-colors group"
-                                >
-                                  <div className="min-w-0 pr-1">
-                                    <div className="font-medium text-ink group-hover:text-primary truncate">
-                                      <HighlightMatch text={w.label} query={filterMenuSearch} />
-                                    </div>
-                                    <div className="text-[10.5px] text-ink-400">Website Activity &bull; {w.type}</div>
-                                  </div>
-                                  <span className="shrink-0 text-[11px] font-medium text-primary px-1.5 py-0.5 rounded bg-primary-50 group-hover:bg-primary group-hover:text-white transition-colors">
-                                    {inRules ? 'Added +' : '+ Add'}
-                                  </span>
-                                </button>
-                              );
-                            })}
-
-                          {/* CONTACT FIELD FILTERS */}
-                          {(activeCategoryTab === 'all' || activeCategoryTab === 'fields') &&
-                            catalogMatchMenu.fieldFilters.map((f) => {
-                              const inRules = builderRules.some((r) => r.field === f.key);
-                              return (
-                                <button
-                                  key={f.key}
-                                  type="button"
-                                  onClick={() => addFilterRuleFromOption('field', f)}
-                                  className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left text-[12px] hover:bg-white hover:shadow-xs transition-colors group"
-                                >
-                                  <div className="min-w-0 pr-1">
-                                    <div className="font-medium text-ink group-hover:text-primary truncate">
-                                      <HighlightMatch text={f.label} query={filterMenuSearch} />
-                                    </div>
-                                    <div className="text-[10.5px] text-ink-400">Field &bull; {f.type}</div>
-                                  </div>
-                                  <span className="shrink-0 text-[11px] font-medium text-primary px-1.5 py-0.5 rounded bg-primary-50 group-hover:bg-primary group-hover:text-white transition-colors">
-                                    {inRules ? 'Added +' : '+ Add'}
-                                  </span>
-                                </button>
-                              );
-                            })}
-
-                          {/* RELATED MODULE FILTERS */}
-                          {(activeCategoryTab === 'all' || activeCategoryTab === 'related') &&
-                            catalogMatchMenu.relatedFilters.map((r) => {
-                              const inRules = builderRules.some((rule) => rule.field === r.key || rule.module === r.key);
-                              return (
-                                <button
-                                  key={r.key}
-                                  type="button"
-                                  onClick={() => addFilterRuleFromOption('related', r)}
-                                  className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left text-[12px] hover:bg-white hover:shadow-xs transition-colors group"
-                                >
-                                  <div className="min-w-0 pr-1">
-                                    <div className="font-medium text-ink group-hover:text-primary truncate">
-                                      <HighlightMatch text={r.label} query={filterMenuSearch} />
-                                    </div>
-                                    <div className="text-[10.5px] text-ink-400">Related Module</div>
-                                  </div>
-                                  <span className="shrink-0 text-[11px] font-medium text-primary px-1.5 py-0.5 rounded bg-primary-50 group-hover:bg-primary group-hover:text-white transition-colors">
-                                    {inRules ? 'Added +' : '+ Add'}
-                                  </span>
-                                </button>
-                              );
-                            })}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Right Pane: Selected Filter Builder Area */}
-                    <div className="sm:col-span-7 flex flex-col min-h-0 max-h-[340px] sm:max-h-[360px] p-3 bg-white">
-                      {/* Conjunction switch & builder header */}
-                      <div className="flex items-center justify-between pb-2.5 mb-2 border-b border-line text-[12px]">
-                        <span className="font-semibold text-ink">
-                          Filter Builder ({builderRules.length})
-                        </span>
-                        <div className="inline-flex items-center gap-1">
-                          <span className="text-ink-500 text-[11.5px] mr-1">Match:</span>
-                          <div className="inline-flex rounded border border-line overflow-hidden text-[11px]">
-                            <button
-                              type="button"
-                              onClick={() => setGlobalJoin('AND')}
-                              className={`px-2 py-0.5 font-semibold transition-colors ${
-                                globalJoin === 'AND' ? 'bg-primary text-white' : 'bg-white text-ink-600 hover:bg-page'
-                              }`}
-                            >
-                              All (AND)
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setGlobalJoin('OR')}
-                              className={`px-2 py-0.5 font-semibold transition-colors ${
-                                globalJoin === 'OR' ? 'bg-primary text-white' : 'bg-white text-ink-600 hover:bg-page'
-                              }`}
-                            >
-                              Any (OR)
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Selected rules list */}
-                      <div className="flex-1 overflow-y-auto thin-scroll space-y-2 pr-1">
-                        {builderRules.length === 0 ? (
-                          <div className="py-10 text-center text-ink-400 text-[12.5px] px-4">
-                            <SlidersHorizontal size={24} className="mx-auto mb-2 text-ink-300 opacity-60" />
-                            <p className="font-medium text-ink-600">No filter conditions added yet</p>
-                            <p className="text-[11.5px] text-ink-400 mt-1">
-                              Select a filter from the left or click &ldquo;+ Add Filter&rdquo; below to build your query.
-                            </p>
-                          </div>
-                        ) : (
-                          builderRules.map((rule) => {
-                            const operators = OPERATORS_BY_TYPE[rule.type || 'text'] || OPERATORS_BY_TYPE.text;
-                            const isUnary = [
-                              'is empty',
-                              'is not empty',
-                              'Today',
-                              'Yesterday',
-                              'This Week',
-                              'This Month',
-                              'Last 30 Days',
-                              'has any',
-                              'has none',
-                            ].includes(rule.operator);
-                            const isBetween = rule.operator === 'between';
-
-                            return (
-                              <div
-                                key={rule.id}
-                                className="p-2.5 rounded-lg border border-line bg-page-soft/40 hover:border-line-hover transition-colors space-y-2 text-[12px]"
-                              >
-                                <div className="flex items-center justify-between gap-1.5">
-                                  {/* Field selector dropdown grouped by category */}
-                                  <select
-                                    aria-label="Filter Field"
-                                    value={`${rule.category}:${rule.field}`}
-                                    onChange={(e) => {
-                                      const [cat, key] = e.target.value.split(':');
-                                      let item;
-                                      if (cat === 'system') item = SYSTEM_DEFINED_FILTERS.find((x) => x.key === key);
-                                      else if (cat === 'website') item = WEBSITE_ACTIVITY_FILTERS.find((x) => x.key === key);
-                                      else if (cat === 'field') item = CONTACT_FIELD_FILTERS.find((x) => x.key === key);
-                                      else item = RELATED_MODULE_FILTERS.find((x) => x.key === key);
-
-                                      if (item) {
-                                        const type = item.type || (cat === 'related' ? 'related' : 'text');
-                                        const ops = OPERATORS_BY_TYPE[type] || OPERATORS_BY_TYPE.text;
-                                        updateBuilderRule(rule.id, {
-                                          category: cat,
-                                          field: key,
-                                          label: item.label,
-                                          type,
-                                          operator: ops[0],
-                                          value: type === 'boolean' ? 'Yes' : '',
-                                          valueTo: '',
-                                        });
-                                      }
-                                    }}
-                                    className="input h-7 text-[12px] font-medium py-0 px-2 bg-white flex-1"
-                                  >
-                                    <optgroup label="System Defined Filters">
-                                      {SYSTEM_DEFINED_FILTERS.map((s) => (
-                                        <option key={`system:${s.key}`} value={`system:${s.key}`}>
-                                          {s.label}
-                                        </option>
-                                      ))}
-                                    </optgroup>
-                                    <optgroup label="Website Activity">
-                                      {WEBSITE_ACTIVITY_FILTERS.map((w) => (
-                                        <option key={`website:${w.key}`} value={`website:${w.key}`}>
-                                          {w.label}
-                                        </option>
-                                      ))}
-                                    </optgroup>
-                                    <optgroup label="Filter By Fields">
-                                      {CONTACT_FIELD_FILTERS.map((f) => (
-                                        <option key={`field:${f.key}`} value={`field:${f.key}`}>
-                                          {f.label}
-                                        </option>
-                                      ))}
-                                    </optgroup>
-                                    <optgroup label="Filter By Related Modules">
-                                      {RELATED_MODULE_FILTERS.map((r) => (
-                                        <option key={`related:${r.key}`} value={`related:${r.key}`}>
-                                          {r.label}
-                                        </option>
-                                      ))}
-                                    </optgroup>
-                                  </select>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => removeBuilderRule(rule.id)}
-                                    aria-label="Remove filter rule"
-                                    className="p-1 rounded text-ink-400 hover:text-danger hover:bg-danger-50 transition-colors"
-                                  >
-                                    <Trash2 size={13.5} />
-                                  </button>
-                                </div>
-
-                                {/* Operator & Value Inputs */}
-                                <div className="grid grid-cols-12 gap-1.5">
-                                  <div className={isUnary ? 'col-span-12' : isBetween ? 'col-span-5' : 'col-span-5'}>
-                                    <select
-                                      aria-label="Filter Operator"
-                                      value={rule.operator}
-                                      onChange={(e) => updateBuilderRule(rule.id, { operator: e.target.value })}
-                                      className="input h-7 text-[11.5px] py-0 px-2 bg-white w-full"
-                                    >
-                                      {operators.map((op) => (
-                                        <option key={op} value={op}>
-                                          {op}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
-
-                                  {!isUnary && !isBetween && (
-                                    <div className="col-span-7">
-                                      {rule.type === 'boolean' || (['is', 'is not'].includes(rule.operator) && ['Yes', 'No'].includes(rule.value || 'Yes')) ? (
-                                        <select
-                                          aria-label="Boolean Value"
-                                          value={rule.value || 'Yes'}
-                                          onChange={(e) => updateBuilderRule(rule.id, { value: e.target.value })}
-                                          className="input h-7 text-[11.5px] py-0 px-2 bg-white w-full"
-                                        >
-                                          <option value="Yes">Yes / True</option>
-                                          <option value="No">No / False</option>
-                                        </select>
-                                      ) : rule.type === 'date' ? (
-                                        <input
-                                          type="date"
-                                          value={rule.value || ''}
-                                          onChange={(e) => updateBuilderRule(rule.id, { value: e.target.value })}
-                                          className="input h-7 text-[11.5px] px-2 bg-white w-full"
-                                        />
-                                      ) : rule.type === 'number' ? (
-                                        <input
-                                          type="number"
-                                          value={rule.value || ''}
-                                          onChange={(e) => updateBuilderRule(rule.id, { value: e.target.value })}
-                                          placeholder="Enter number..."
-                                          className="input h-7 text-[11.5px] px-2 bg-white w-full"
-                                        />
-                                      ) : (
-                                        <input
-                                          type="text"
-                                          value={rule.value || ''}
-                                          onChange={(e) => updateBuilderRule(rule.id, { value: e.target.value })}
-                                          placeholder="Enter value..."
-                                          className="input h-7 text-[11.5px] px-2 bg-white w-full"
-                                        />
-                                      )}
-                                    </div>
-                                  )}
-
-                                  {isBetween && (
-                                    <div className="col-span-7 grid grid-cols-2 gap-1">
-                                      <input
-                                        type={rule.type === 'date' ? 'date' : 'number'}
-                                        value={rule.value || ''}
-                                        onChange={(e) => updateBuilderRule(rule.id, { value: e.target.value })}
-                                        placeholder="From"
-                                        className="input h-7 text-[11.5px] px-2 bg-white w-full"
-                                      />
-                                      <input
-                                        type={rule.type === 'date' ? 'date' : 'number'}
-                                        value={rule.valueTo || ''}
-                                        onChange={(e) => updateBuilderRule(rule.id, { valueTo: e.target.value })}
-                                        placeholder="To"
-                                        className="input h-7 text-[11.5px] px-2 bg-white w-full"
-                                      />
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Popover Footer: Add Filter, Save Filter, Clear, Apply */}
-                  <div className="flex items-center justify-between px-4 py-2.5 border-t border-line bg-page-soft/60">
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          addFilterRuleFromOption('field', {
-                            key: 'firstName',
-                            label: 'First Name',
-                            type: 'text',
-                          })
-                        }
-                        className="btn-secondary h-8 px-2.5 text-[12px] inline-flex items-center gap-1"
-                      >
-                        <Plus size={14} />
-                        <span>Add Filter</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSaveViewModal({ mode: 'create', name: '' })}
-                        className="h-8 px-2.5 rounded-lg border border-line bg-white hover:bg-page text-ink-600 text-[12px] font-medium inline-flex items-center gap-1"
-                      >
-                        <BookmarkPlus size={13.5} className="text-primary" />
-                        <span>Save Filter</span>
-                      </button>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setBuilderRules([]);
-                          clearAllFilters();
-                        }}
-                        className="btn-secondary h-8 px-3 text-[12px]"
-                      >
-                        Clear
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setFilterMenuOpen(false);
-                          table.setPage(1);
-                          toast.success(`Applied filters (${filtered.length} contacts matching)`);
-                        }}
-                        className="btn-primary h-8 px-3.5 text-[12px]"
-                      >
-                        Apply ({filtered.length})
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
         </div>
 
         {/* Role & Record-Level Permission Controls */}
-        <div className="flex items-center gap-2.5 ml-auto">
+        <div className="flex flex-wrap items-center gap-2.5 sm:ml-auto">
           <div className="flex items-center gap-1.5 text-[12px] text-ink-600">
             <Shield size={13.5} className="text-primary" />
             <select
@@ -2239,7 +2045,11 @@ export default function Contacts({ isCreatePage = false }) {
             />
             <aside
               aria-label="Filter Contacts by"
-              className="fixed inset-y-0 left-0 z-50 w-[290px] max-w-[85vw] bg-white shadow-2xl p-4 overflow-y-auto thin-scroll lg:static lg:z-auto lg:w-[228px] lg:shadow-none lg:card lg:shrink-0 lg:px-3 lg:py-3.5 lg:sticky lg:top-[72px] lg:max-h-[calc(100vh-92px)]"
+              className={`fixed inset-y-0 left-0 z-50 w-[290px] max-w-[85vw] bg-white shadow-2xl p-4 overflow-y-auto thin-scroll lg:static lg:z-auto lg:w-[228px] lg:shadow-none lg:card lg:shrink-0 lg:px-3 lg:py-3.5 lg:sticky ${
+                headerMode === 'fixed'
+                  ? 'lg:top-[184px] lg:max-h-[calc(100vh-196px)]'
+                  : 'lg:top-[72px] lg:max-h-[calc(100vh-92px)]'
+              }`}
             >
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-[14.5px] font-semibold text-ink">Filter Contacts by</h2>
@@ -2779,6 +2589,11 @@ export default function Contacts({ isCreatePage = false }) {
                 loading={refreshing}
                 dense={dense}
                 minWidth={1020}
+                columnWidths={columnWidths}
+                onReorderColumns={reorderColumns}
+                onMoveColumn={moveColumnByOffset}
+                onResizeColumn={setColumnWidth}
+                stickyColumnKey="firstName"
                 emptyTitle={activeFilterCount > 0 ? "No records match these filters" : "No contacts found"}
                 emptyHint={activeFilterCount > 0 ? "Try adjusting your filter criteria, switching conjunction logic (AND / OR), or clearing the search query." : "Get started by adding your first contact to Honey One CRM."}
                 emptyAction={
@@ -2795,13 +2610,20 @@ export default function Contacts({ isCreatePage = false }) {
                   </div>
                 }
               />
-              <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-line bg-white text-[12.5px] text-ink-600">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-ink-500">Total Records</span>
-                  <span className="font-bold text-ink font-mono text-[13px]">{filtered.length}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1.5 text-[12px] mr-2">
+              <div
+                data-testid="contacts-footer-bar"
+                className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-line bg-white text-[12.5px] text-ink-600"
+              >
+                <RecordSelectionSummary
+                  total={filtered.length}
+                  selectedCount={table.selected.size}
+                  onClearSelection={table.clearSelection}
+                  totalTestId="contacts-total-count"
+                  selectionTestId="contacts-selected-count"
+                  deselectTestId="contacts-deselect-all-btn"
+                />
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5 text-[12px] mr-1">
                     <span className="text-ink-400">Rows per page:</span>
                     <select
                       value={table.pageSize}
@@ -2817,6 +2639,7 @@ export default function Contacts({ isCreatePage = false }) {
                   <div className="flex items-center gap-1 font-medium">
                     <button
                       type="button"
+                      data-testid="contacts-prev-page"
                       disabled={table.page <= 1}
                       onClick={() => table.setPage(table.page - 1)}
                       className="w-7 h-7 rounded border border-line flex items-center justify-center text-ink hover:bg-page disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-[13px]"
@@ -2824,13 +2647,39 @@ export default function Contacts({ isCreatePage = false }) {
                     >
                       ‹
                     </button>
-                    <span className="px-2.5 py-0.5 text-[12px] font-medium text-ink-700">
+                    {(() => {
+                      const maxP = Math.max(1, Math.ceil(filtered.length / table.pageSize));
+                      const cnt = Math.min(5, maxP);
+                      let startP = Math.max(1, table.page - 2);
+                      startP = Math.min(startP, maxP - cnt + 1);
+                      return Array.from({ length: cnt }, (_, idx) => startP + idx).map((p) => (
+                        <button
+                          key={p}
+                          type="button"
+                          data-testid={`contacts-page-${p}`}
+                          onClick={() => table.setPage(p)}
+                          aria-current={p === table.page ? 'page' : undefined}
+                          className={`min-w-7 h-7 px-1.5 rounded border text-[12px] flex items-center justify-center transition-colors ${
+                            p === table.page
+                              ? 'bg-primary border-primary text-white font-semibold'
+                              : 'border-line bg-white text-ink hover:bg-page'
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      ));
+                    })()}
+                    <span
+                      data-testid="contacts-page-range"
+                      className="px-2 py-0.5 text-[12px] font-medium text-ink-700 tabular-nums"
+                    >
                       {filtered.length === 0
                         ? '0 to 0'
                         : `${(table.page - 1) * table.pageSize + 1} to ${Math.min(filtered.length, table.page * table.pageSize)}`}
                     </span>
                     <button
                       type="button"
+                      data-testid="contacts-next-page"
                       disabled={table.page >= Math.max(1, Math.ceil(filtered.length / table.pageSize))}
                       onClick={() => table.setPage(table.page + 1)}
                       className="w-7 h-7 rounded border border-line flex items-center justify-center text-ink hover:bg-page disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-[13px]"
@@ -2841,10 +2690,26 @@ export default function Contacts({ isCreatePage = false }) {
                   </div>
                 </div>
               </div>
-              <div className="hidden">
-                <Pagination table={table} variant="records" options={[10, 25, 50, 100]} />
-              </div>
             </>
+          )}
+
+          {layout === 'spreadsheet' && (
+            <SpreadsheetView
+              moduleType="contacts"
+              columns={spreadsheetColumns}
+              rows={table.pageRows}
+              table={table}
+              totalFilteredCount={filtered.length}
+              dense={dense}
+              onSaveCell={handleSpreadsheetSaveContactCell}
+              onAddRow={handleSpreadsheetAddContact}
+              onDeleteRows={(ids, label) =>
+                handleDeleteRequest(ids, label || `${ids.length} contact(s)`)
+              }
+              onOpenDetail={(id) => openContactDetail(id)}
+              onOpenImportCSV={() => setCsvImportOpen(true)}
+              onExportCSV={() => exportRows(table.sorted)}
+            />
           )}
 
           {layout === 'kanban' && (
@@ -2875,42 +2740,363 @@ export default function Contacts({ isCreatePage = false }) {
           )}
 
           {layout === 'grid' && (
-            <div className="p-3">
-              <GridView
-                rows={table.pageRows}
-                onCardClick={(c) => openContactDetail(c.id)}
-                renderCard={(c) => (
-                  <>
-                    <div className="flex items-center gap-3">
-                      <PersonAvatar name={c.name} size={44} />
-                      <div className="min-w-0">
-                        <div className="font-semibold text-ink truncate">{c.name}</div>
-                        <div className="text-[12.5px] text-ink-500 truncate">{c.designation}</div>
-                      </div>
-                    </div>
-                    <div className="mt-3 space-y-1 text-[12.5px] text-ink-600">
-                      <div className="truncate">{accountName(c.accountId)}</div>
-                      <div className="truncate flex items-center gap-1.5">
-                        <Mail size={13} />
-                        {c.email}
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <Phone size={13} />
-                        {c.phone}
-                      </div>
-                    </div>
-                    <div className="mt-3 flex items-center gap-2">
-                      <StatusBadge kind="lifecycle" value={c.lifecycle} size="sm" />
-                      <StatusBadge kind="leadSource" value={c.leadSource} size="sm" />
-                      <span className="ml-auto">
-                        <UserAvatar userId={c.ownerId} size={24} />
+            <GridView
+              testId="contacts-grid-view"
+              rows={table.pageRows}
+              table={table}
+              totalCount={filtered.length}
+              dense={dense}
+              quickFilterValue={lifecycleQuick}
+              quickFilterOptions={LIFECYCLES}
+              onQuickFilterChange={(v) => {
+                setLifecycleQuick(v);
+                table.setPage(1);
+              }}
+              quickActionLabel="Contact"
+              onQuickAction={() => navigate('/contacts/create')}
+              emptyTitle={activeFilterCount > 0 ? 'No records match these filters' : 'No contacts found'}
+              emptyHint={
+                activeFilterCount > 0
+                  ? 'Try adjusting your filter criteria or clearing the search query.'
+                  : 'Get started by adding your first contact to Honey One CRM.'
+              }
+              emptyAction={
+                <div className="flex items-center gap-2 mt-2">
+                  {activeFilterCount > 0 && (
+                    <button type="button" className="btn-secondary h-9" onClick={clearAllFilters}>
+                      Reset Filters &amp; Search
+                    </button>
+                  )}
+                  <button type="button" className="btn-primary h-9" onClick={() => navigate('/contacts/create')}>
+                    <Plus size={16} />
+                    Create Contact
+                  </button>
+                </div>
+              }
+              columns={[
+                {
+                  key: 'name',
+                  header: 'Contact Name',
+                  minWidth: 195,
+                  sortable: true,
+                  render: (c) => (
+                    <button
+                      type="button"
+                      onClick={() => openContactDetail(c.id)}
+                      data-testid={`grid-contact-name-${c.id}`}
+                      className="font-medium text-[#1E293B] hover:text-[#1262E0] hover:underline text-left truncate block max-w-full cursor-pointer"
+                    >
+                      {c.name}
+                    </button>
+                  ),
+                },
+                {
+                  key: 'lifecycle',
+                  header: 'Contact Status',
+                  minWidth: 155,
+                  sortable: true,
+                  render: (c) => <GridStatusPill value={c.lifecycle || 'New'} />,
+                },
+                {
+                  key: 'account',
+                  header: 'Account Name',
+                  minWidth: 185,
+                  sortable: true,
+                  render: (c) => (
+                    <span className="text-[#1E293B] truncate block">
+                      {accountName(c.accountId)}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'department',
+                  header: 'Department / Role',
+                  minWidth: 175,
+                  sortable: true,
+                  render: (c) => (
+                    <span className="text-[#334155] truncate block">
+                      {c.department
+                        ? `${c.department}${c.designation ? ` · ${c.designation}` : ''}`
+                        : c.designation || '—'}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'leadSource',
+                  header: 'Lead Source',
+                  minWidth: 145,
+                  sortable: true,
+                  render: (c) =>
+                    c.leadSource ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded bg-[#F1F5F9] text-[#334155] border border-[#E2E8F0] text-[11.5px] font-medium">
+                        {c.leadSource}
                       </span>
+                    ) : (
+                      <span className="text-[#94A3B8]">—</span>
+                    ),
+                },
+                {
+                  key: 'email',
+                  header: 'Email',
+                  minWidth: 210,
+                  sortable: true,
+                  render: (c) =>
+                    c.email ? (
+                      <a
+                        href={`mailto:${c.email}`}
+                        className="text-[#334155] hover:text-[#1262E0] hover:underline truncate block"
+                      >
+                        {c.email}
+                      </a>
+                    ) : (
+                      <span className="text-[#94A3B8]">—</span>
+                    ),
+                },
+                {
+                  key: 'phone',
+                  header: 'Phone',
+                  minWidth: 150,
+                  sortable: true,
+                  render: (c) => (
+                    <span className="text-[#334155] font-mono text-[12px]">
+                      {c.phone || c.mobile || '—'}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'mailingCity',
+                  header: 'City',
+                  minWidth: 130,
+                  sortable: true,
+                  render: (c) => (
+                    <span className="text-[#334155]">
+                      {c.mailingCity || c.city || '—'}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'owner',
+                  header: 'Contact Owner',
+                  minWidth: 165,
+                  sortable: true,
+                  render: (c) => (
+                    <div className="inline-flex items-center gap-1.5">
+                      <UserAvatar userId={c.ownerId} size={20} />
+                      <span className="text-[#334155] text-[12px]">{userName(c.ownerId)}</span>
                     </div>
-                  </>
-                )}
-              />
-              <Pagination table={table} variant="records" />
-            </div>
+                  ),
+                },
+                {
+                  key: 'lastContacted',
+                  header: 'Last Contacted',
+                  minWidth: 130,
+                  sortable: true,
+                  render: (c) => (
+                    <span className="text-[#475569] text-[12px]">
+                      {c.lastContacted ? fmtDate(c.lastContacted) : '—'}
+                    </span>
+                  ),
+                },
+              ]}
+            />
+          )}
+
+          {layout === 'split' && (
+            <SplitView
+              moduleType="contacts"
+              rows={table.sorted}
+              table={table}
+              savedSplitViews={savedContactSplitViews}
+              onSaveSplitView={saveContactSplitView}
+              onDeleteSplitView={deleteContactSplitView}
+              users={users}
+              activeUser={activeUser}
+              onOpenDetail={(id) => openContactDetail(id)}
+              fieldCatalog={[
+                {
+                  key: 'leadSource',
+                  label: 'Lead Source',
+                  type: 'picklist',
+                  options: LEAD_SOURCES,
+                  getValue: (c) => c.leadSource || '',
+                },
+                {
+                  key: 'lifecycle',
+                  label: 'Lifecycle Stage',
+                  type: 'picklist',
+                  options: LIFECYCLES,
+                  getValue: (c) => c.lifecycle || '',
+                },
+                {
+                  key: 'owner',
+                  label: 'Contact Owner',
+                  type: 'user',
+                  options: users.map((u) => u.name),
+                  getValue: (c) => userName(c.ownerId),
+                },
+                {
+                  key: 'department',
+                  label: 'Department',
+                  type: 'picklist',
+                  options: ['Sales', 'IT', 'Finance', 'Marketing', 'Operations', 'Executive', 'Procurement', 'Engineering'],
+                  getValue: (c) => c.department || '',
+                },
+                {
+                  key: 'mailingCity',
+                  label: 'Mailing City',
+                  type: 'picklist',
+                  options: ['Chennai', 'Bengaluru', 'Mumbai', 'Hyderabad', 'New Delhi', 'Pune', 'Coimbatore'],
+                  getValue: (c) => c.mailingCity || c.city || '',
+                },
+                {
+                  key: 'vendorName',
+                  label: 'Vendor Name',
+                  type: 'picklist',
+                  options: VENDORS,
+                  getValue: (c) => c.vendorName || '',
+                },
+                {
+                  key: 'firstName',
+                  label: 'First Name',
+                  type: 'text',
+                  options: [],
+                  getValue: (c) => c.firstName || (c.name || '').split(' ')[0] || '',
+                },
+                {
+                  key: 'lastName',
+                  label: 'Last Name',
+                  type: 'text',
+                  options: [],
+                  getValue: (c) => c.lastName || (c.name || '').split(' ').slice(1).join(' ') || '',
+                },
+                {
+                  key: 'email',
+                  label: 'Email',
+                  type: 'text',
+                  options: [],
+                  getValue: (c) => c.email || '',
+                },
+                {
+                  key: 'phone',
+                  label: 'Phone',
+                  type: 'text',
+                  options: [],
+                  getValue: (c) => c.phone || c.mobile || '',
+                },
+              ]}
+              columnCatalog={[
+                {
+                  key: 'firstName',
+                  label: 'First Name',
+                  minWidth: 155,
+                  render: (c) => (
+                    <button
+                      type="button"
+                      onClick={() => openContactDetail(c.id)}
+                      data-testid={`split-contact-firstname-${c.id}`}
+                      className="font-medium text-[#1E293B] hover:text-[#1262E0] hover:underline text-left truncate block max-w-full cursor-pointer"
+                    >
+                      {c.firstName || (c.name || '').split(' ')[0] || c.name}
+                    </button>
+                  ),
+                },
+                {
+                  key: 'lastName',
+                  label: 'Last Name',
+                  minWidth: 155,
+                  render: (c) => (
+                    <button
+                      type="button"
+                      onClick={() => openContactDetail(c.id)}
+                      className="text-[#1E293B] hover:text-[#1262E0] hover:underline text-left truncate block max-w-full cursor-pointer"
+                    >
+                      {c.lastName || (c.name || '').split(' ').slice(1).join(' ') || '—'}
+                    </button>
+                  ),
+                },
+                {
+                  key: 'name',
+                  label: 'Contact Name',
+                  minWidth: 185,
+                  render: (c) => (
+                    <button
+                      type="button"
+                      onClick={() => openContactDetail(c.id)}
+                      data-testid={`split-contact-name-${c.id}`}
+                      className="font-medium text-[#1E293B] hover:text-[#1262E0] hover:underline text-left truncate block max-w-full cursor-pointer"
+                    >
+                      {c.name}
+                    </button>
+                  ),
+                },
+                {
+                  key: 'account',
+                  label: 'Account Name',
+                  minWidth: 185,
+                  render: (c) => <span className="text-[#1E293B] truncate block">{accountName(c.accountId)}</span>,
+                },
+                {
+                  key: 'leadSource',
+                  label: 'Lead Source',
+                  minWidth: 145,
+                  render: (c) => <span className="text-[#334155]">{c.leadSource || '—'}</span>,
+                },
+                {
+                  key: 'lifecycle',
+                  label: 'Lifecycle Stage',
+                  minWidth: 145,
+                  render: (c) => <GridStatusPill value={c.lifecycle || 'New'} />,
+                },
+                {
+                  key: 'department',
+                  label: 'Department',
+                  minWidth: 155,
+                  render: (c) => <span className="text-[#334155]">{c.department || c.designation || '—'}</span>,
+                },
+                {
+                  key: 'phone',
+                  label: 'Phone',
+                  minWidth: 145,
+                  render: (c) => <span className="text-[#334155] font-mono text-[12px]">{c.phone || c.mobile || '—'}</span>,
+                },
+                {
+                  key: 'email',
+                  label: 'Email',
+                  minWidth: 195,
+                  render: (c) =>
+                    c.email ? (
+                      <a href={`mailto:${c.email}`} className="text-[#334155] hover:text-[#1262E0] hover:underline truncate block">
+                        {c.email}
+                      </a>
+                    ) : (
+                      <span className="text-[#94A3B8]">—</span>
+                    ),
+                },
+                {
+                  key: 'mailingCity',
+                  label: 'Mailing City',
+                  minWidth: 135,
+                  render: (c) => <span className="text-[#334155]">{c.mailingCity || c.city || '—'}</span>,
+                },
+                {
+                  key: 'owner',
+                  label: 'Contact Owner',
+                  minWidth: 165,
+                  render: (c) => (
+                    <div className="inline-flex items-center gap-1.5">
+                      <UserAvatar userId={c.ownerId} size={20} />
+                      <span className="text-[#334155] text-[12px]">{userName(c.ownerId)}</span>
+                    </div>
+                  ),
+                },
+                {
+                  key: 'lastContacted',
+                  label: 'Last Contacted',
+                  minWidth: 135,
+                  render: (c) => <span className="text-[#475569] text-[12px]">{c.lastContacted ? fmtDate(c.lastContacted) : '—'}</span>,
+                },
+              ]}
+            />
           )}
 
           {layout === 'chart' && (
@@ -2922,6 +3108,24 @@ export default function Contacts({ isCreatePage = false }) {
                 color: LIFECYCLE_COLORS[l],
               }))}
               valueLabel="Contacts"
+            />
+          )}
+
+          {layout === 'timeline' && (
+            <ModuleTimelineView
+              moduleType="contacts"
+              rows={table.sorted}
+              totalCount={filtered.length}
+              users={users}
+              userName={userName}
+              accountName={accountName}
+              deals={deals}
+              calls={calls}
+              tasks={tasks}
+              sort={table.sort}
+              onSortChange={table.setSort}
+              onOpenDetail={(id) => openContactDetail(id)}
+              emptyResetAction={activeFilterCount > 0 ? clearAllFilters : undefined}
             />
           )}
         </section>
@@ -3688,6 +3892,47 @@ export default function Contacts({ isCreatePage = false }) {
         )}
       </Modal>
 
+      {/* ==================== SEND WHATSAPP MODAL ==================== */}
+      <WhatsAppComposerModal
+        open={Boolean(whatsappContact)}
+        onClose={() => setWhatsappContact(null)}
+        recordType="Contact"
+        recordName={whatsappContact?.name || ''}
+        recordSubtitle={
+          whatsappContact && accountName(whatsappContact.accountId) !== '—'
+            ? `${whatsappContact.designation ? `${whatsappContact.designation} · ` : ''}${accountName(whatsappContact.accountId)}`
+            : whatsappContact?.designation || ''
+        }
+        mobile={whatsappContact?.mobile}
+        phone={whatsappContact?.phone}
+        otherPhone={whatsappContact?.otherPhone}
+        homePhone={whatsappContact?.homePhone}
+        ownerName={whatsappContact ? userName(whatsappContact.ownerId) : activeUser.name}
+        defaultMessage={
+          whatsappContact
+            ? `Hi ${whatsappContact.firstName || whatsappContact.name},\n\nHope you are doing well. Following up on our recent conversation${
+                accountName(whatsappContact.accountId) && accountName(whatsappContact.accountId) !== '—'
+                  ? ` with ${accountName(whatsappContact.accountId)}`
+                  : ''
+              }.\n\nBest regards,\n${userName(whatsappContact.ownerId) || activeUser.name}`
+            : ''
+        }
+        onSavePhone={(updates) => {
+          if (!whatsappContact) return;
+          updateRecord('contacts', whatsappContact.id, {
+            ...updates,
+            modifiedTime: todayISO(),
+          });
+          setWhatsappContact((prev) => (prev ? { ...prev, ...updates } : prev));
+          toast.success(`Updated WhatsApp number on ${whatsappContact.name}`);
+        }}
+        onOpenedWhatsApp={({ number, mode }) => {
+          toast.info(
+            `Opened ${mode === 'web' ? 'WhatsApp Web' : 'WhatsApp'} for ${number}. Please confirm and press Send in WhatsApp.`
+          );
+        }}
+      />
+
       {/* ==================== BULK EDIT MODAL ==================== */}
       <Modal
         open={Boolean(bulkMode)}
@@ -3799,6 +4044,13 @@ export default function Contacts({ isCreatePage = false }) {
                 }
               >
                 <Mail size={15} /> Send Email
+              </button>
+              <button
+                type="button"
+                className="btn-secondary text-[#15803D] border-[#16A34A]/30 bg-[#F0FDF4] hover:bg-[#DCFCE7]"
+                onClick={() => setWhatsappContact(viewingRec)}
+              >
+                <WhatsAppIcon size={15} className="text-[#16A34A]" /> Send WhatsApp
               </button>
               <button
                 type="button"
@@ -4074,27 +4326,7 @@ export default function Contacts({ isCreatePage = false }) {
 
               {detailTab === 'timeline' && (
                 <div>
-                  <SectionTitle>Activity Timeline</SectionTitle>
-                  <ul className="space-y-2.5">
-                    {relCalls.map((c) => (
-                      <li key={c.id} className="border border-line rounded-lg px-3 py-2 text-[12.5px]">
-                        <div className="flex items-center justify-between">
-                          <Link to={`/calls?open=${c.id}`} className="link font-medium">
-                            Call: {c.subject}
-                          </Link>
-                          <StatusBadge kind="callStatus" value={c.status} size="sm" />
-                        </div>
-                        <div className="text-[11.5px] text-ink-500 mt-0.5">
-                          {fmtDate(c.dateTime)} {fmtTime(c.dateTime)} · {c.type} · {c.notes}
-                        </div>
-                      </li>
-                    ))}
-                    <li className="border border-line rounded-lg px-3 py-2 text-[12.5px] text-ink-600">
-                      Record created on <strong>{viewingRec.createdTime || viewingRec.createdOn}</strong> by{' '}
-                      <strong>{userName(viewingRec.createdBy || viewingRec.ownerId)}</strong>. Last modified on{' '}
-                      <strong>{viewingRec.modifiedTime || viewingRec.lastContacted}</strong>.
-                    </li>
-                  </ul>
+                  <RecordTimeline recordType="contact" record={viewingRec} compact />
                 </div>
               )}
             </div>
@@ -4370,6 +4602,15 @@ export default function Contacts({ isCreatePage = false }) {
           </div>
         </Modal>
       )}
+
+      {/* ==================== CSV IMPORT MODAL (CONTACTS) ==================== */}
+      <CSVImportModal
+        open={csvImportOpen}
+        onClose={() => setCsvImportOpen(false)}
+        moduleType="contacts"
+        activeUser={activeUser}
+        onImportComplete={() => table.setPage(1)}
+      />
     </div>
   );
 }

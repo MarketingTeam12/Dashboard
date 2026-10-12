@@ -42,7 +42,7 @@ export default function Sidebar({ open, onClose }) {
   const toast = useToast();
   const [salesOpen, setSalesOpen] = useState(true);
   const [expanded, setExpanded] = useState({});
-  const notInDemo = (t) => toast.info(`${t} is shown for navigation context only. The working modules are Contacts, Accounts, Deals, Calls, My Jobs, Forecasts, the two Stage Summary reports and Zoho Finance.`);
+  const notInDemo = (t) => toast.info(`${t} is shown for navigation context only. The working modules are Reports, Contacts, Accounts, Deals, Calls, My Jobs, Forecasts, the two Stage Summary reports and Zoho Finance.`);
 
   return (
     <>
@@ -55,7 +55,7 @@ export default function Sidebar({ open, onClose }) {
         </div>
         <nav className="flex-1 overflow-y-auto sidebar-scroll pb-24 relative z-10">
           <div className="space-y-0.5 pt-1">
-            {TOP_ITEMS.map((t) => <Placeholder key={t.title} {...t} onClick={() => notInDemo(t.title)} />)}
+            {TOP_ITEMS.map((t) => (t.path ? <ModuleLink key={t.path} path={t.path} onNavigate={onClose} /> : <Placeholder key={t.title} {...t} onClick={() => notInDemo(t.title)} />))}
           </div>
           <div className="border-t border-white/10 my-2.5" />
           <button type="button" onClick={() => setSalesOpen((o) => !o)} className="w-full flex items-center justify-between px-4 h-9 text-white text-[15px] font-semibold">

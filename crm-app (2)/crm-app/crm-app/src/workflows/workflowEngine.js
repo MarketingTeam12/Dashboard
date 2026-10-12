@@ -152,6 +152,17 @@ export function validateWorkflow(wf) {
   return [...new Set(errors)];
 }
 
+export function describeTrigger(t = {}, ev = {}) {
+  if (!t.triggerType) return ev.type ? `Record ${ev.type}` : 'Workflow Trigger';
+  if (t.triggerType === 'Field Value Changed' && t.field) {
+    return `Field "${t.field}" changed${t.toValue ? ` to "${t.toValue}"` : ''}`;
+  }
+  if (['Deal Stage Changed', 'Invoice Status Changed', 'Call Status Changed'].includes(t.triggerType) && t.toValue) {
+    return `${t.triggerType} → ${t.toValue}`;
+  }
+  return t.triggerType;
+}
+
 /**
  * Walks one workflow graph for an event. Pure: returns what would happen.
  */
@@ -162,7 +173,8 @@ export function evaluateWorkflow(wf, ev, ctx = {}) {
   const trigger = wf.nodes.find((n) => n.type === 'trigger');
   if (!trigger || !triggerMatches(trigger.data, ev)) return out;
   out.matched = true;
-  out.steps.push({ nodeId: trigger.id, kind: 'trigger', label: trigger.data.triggerType, result: 'matched' });
+  const trigDetail = describeTrigger(trigger.data, ev);
+  out.steps.push({ nodeId: trigger.id, kind: 'trigger', label: trigger.data.triggerType, detail: trigDetail, result: 'matched' });
 
   const working = { ...ev.record };
   const byId = Object.fromEntries(wf.nodes.map((n) => [n.id, n]));
@@ -170,7 +182,23 @@ export function evaluateWorkflow(wf, ev, ctx = {}) {
   const queue = outgoing(trigger.id).map((e) => e.target);
   const visited = new Set([trigger.id]);
   const now = new Date().toISOString();
-  const base = { module: wf.module, recordId: ev.record.id, recordLabel: recordLabel(ev.record), workflowId: wf.id, workflowName: wf.name, createdAt: now };
+  const resolvedAccountId = wf.module === 'Accounts' ? ev.record?.id : (ev.record?.accountId || '');
+  const resolvedContactId = wf.module === 'Contacts' ? ev.record?.id : (ev.record?.contactId || '');
+  const responsibleUserId = ev.userId || ev.record?.modifiedBy || ev.record?.createdBy || ev.record?.ownerId || 'u1';
+  const base = {
+    module: wf.module,
+    recordId: ev.record.id,
+    recordLabel: recordLabel(ev.record),
+    accountId: resolvedAccountId,
+    contactId: resolvedContactId,
+    userId: responsibleUserId,
+    workflowId: wf.id,
+    workflowName: wf.name,
+    trigger: trigger.data.triggerType,
+    triggerDetail: trigDetail,
+    createdAt: now,
+    source: 'workflow',
+  };
 
   while (queue.length) {
     const id = queue.shift();
@@ -179,7 +207,17 @@ export function evaluateWorkflow(wf, ev, ctx = {}) {
     const node = byId[id];
     if (node.type === 'condition') {
       const pass = evalCondition(node.data, working);
-      out.steps.push({ nodeId: id, kind: 'condition', label: 'Condition', result: pass ? 'passed' : 'failed' });
+      const ruleDesc = (node.data?.rules || [])
+        .filter((r) => r.field)
+        .map((r) => `${r.field} ${r.operator} ${r.value}`)
+        .join(` ${node.data?.logic || 'AND'} `);
+      out.steps.push({
+        nodeId: id,
+        kind: 'condition',
+        label: 'Condition',
+        detail: ruleDesc || 'Condition check',
+        result: pass ? 'passed' : 'failed',
+      });
       outgoing(id).filter((e) => (e.sourceHandle || 'yes') === (pass ? 'yes' : 'no')).forEach((e) => queue.push(e.target));
       continue;
     }
@@ -190,33 +228,71 @@ export function evaluateWorkflow(wf, ev, ctx = {}) {
         out.patch[k] = v;
         working[k] = v;
       };
+      let interpolatedDetail = describeAction(d, users);
       switch (d.actionType) {
         case 'Update Field': {
           const def = fieldDef(wf.module, d.field);
           if (def && !def.computed) setField(d.field, def.type === 'number' ? Number(d.value) || 0 : d.value);
+          interpolatedDetail = `Updated ${def?.label || d.field} to "${d.value ?? ''}"`;
           break;
         }
         case 'Change Deal Stage':
           if (wf.module === 'Deals' && d.stage) {
             setField('stage', d.stage);
             setField('probability', STAGE_PROBABILITY[d.stage]);
+            interpolatedDetail = `Changed Deal Stage to "${d.stage}" (${STAGE_PROBABILITY[d.stage]}%)`;
           }
           break;
-        case 'Assign Record Owner': if (d.owner) setField('ownerId', d.owner); break;
-        case 'Update Record Status': if (d.status) setField(STATUS_FIELD[wf.module], d.status); break;
-        case 'Create Follow-up Task':
-          out.tasks.push({ ...base, id: uid('task'), title: interpolate(d.title, working, users), dueDate: addDays(today, Number(d.dueDays) || 0), ownerId: working.ownerId || 'u1', status: 'Open' });
+        case 'Assign Record Owner':
+          if (d.owner) {
+            setField('ownerId', d.owner);
+            const ownerName = users.find((u) => u.id === d.owner)?.name || d.owner;
+            interpolatedDetail = `Assigned record owner to ${ownerName}`;
+          }
           break;
-        case 'Add Notification':
-          out.notifications.push({ ...base, id: uid('n'), message: interpolate(d.message, working, users), read: false });
+        case 'Update Record Status':
+          if (d.status) {
+            setField(STATUS_FIELD[wf.module], d.status);
+            interpolatedDetail = `Updated ${STATUS_FIELD[wf.module] || 'status'} to "${d.status}"`;
+          }
           break;
-        case 'Create Activity Log':
-          out.activity.push({ ...base, id: uid('log'), message: interpolate(d.message, working, users) });
+        case 'Create Follow-up Task': {
+          const taskTitle = interpolate(d.title, working, users);
+          const dueDate = addDays(today, Number(d.dueDays) || 0);
+          out.tasks.push({
+            ...base,
+            id: uid('task'),
+            title: taskTitle,
+            dueDate,
+            ownerId: working.ownerId || 'u1',
+            status: 'Open',
+          });
+          interpolatedDetail = `Created follow-up task "${taskTitle}" (Due ${dueDate})`;
           break;
+        }
+        case 'Add Notification': {
+          const msg = interpolate(d.message, working, users);
+          out.notifications.push({ ...base, id: uid('n'), message: msg, read: false });
+          interpolatedDetail = `Sent notification: "${msg}"`;
+          break;
+        }
+        case 'Create Activity Log': {
+          const msg = interpolate(d.message, working, users);
+          out.activity.push({ ...base, id: uid('log'), message: msg });
+          interpolatedDetail = `Logged activity: "${msg}"`;
+          break;
+        }
         default: break;
       }
       out.executed = true;
-      out.steps.push({ nodeId: id, kind: 'action', label: d.actionType, result: 'executed', detail: describeAction(d, users) });
+      out.steps.push({
+        nodeId: id,
+        kind: 'action',
+        label: d.actionType,
+        result: 'executed',
+        detail: describeAction(d, users),
+        interpolatedDetail,
+      });
       outgoing(id).forEach((e) => queue.push(e.target));
     }
   }
@@ -241,11 +317,32 @@ export function runWorkflows(workflows, ev, ctx = {}) {
       result.tasks.push(...r.tasks);
       result.activity.push(...r.activity);
       result.fired.push({ id: wf.id, name: wf.name, executed: r.executed });
+      const triggerNode = wf.nodes.find((n) => n.type === 'trigger');
+      const resolvedAccountId = wf.module === 'Accounts' ? record?.id : (record?.accountId || '');
+      const resolvedContactId = wf.module === 'Contacts' ? record?.id : (record?.contactId || '');
+      const responsibleUserId = ev.userId || record?.modifiedBy || record?.createdBy || record?.ownerId || 'u1';
+      const actionSteps = r.steps.filter((s) => s.kind === 'action');
+      const conditionSteps = r.steps.filter((s) => s.kind === 'condition');
       result.history.push({
-        id: uid('run'), workflowId: wf.id, workflowName: wf.name, module: wf.module, event: ev.type,
-        recordId: ev.record.id, recordLabel: recordLabel(ev.record), at: new Date().toISOString(),
+        id: uid('run'),
+        workflowId: wf.id,
+        workflowName: wf.name,
+        module: wf.module,
+        event: ev.type,
+        trigger: triggerNode?.data?.triggerType || ev.type,
+        triggerDetail: describeTrigger(triggerNode?.data || {}, ev),
+        recordId: ev.record.id,
+        recordLabel: recordLabel(record),
+        accountId: resolvedAccountId,
+        contactId: resolvedContactId,
+        userId: responsibleUserId,
+        at: new Date().toISOString(),
         outcome: r.executed ? 'Executed' : 'Conditions not met',
-        actions: r.steps.filter((s) => s.kind === 'action').map((s) => s.label),
+        status: r.executed ? 'Success' : 'Conditions Not Met',
+        actions: actionSteps.map((s) => s.label),
+        actionDetails: actionSteps.map((s) => s.interpolatedDetail || s.detail || s.label),
+        conditionSummary: conditionSteps.map((s) => `${s.detail || s.label} (${s.result})`).join('; '),
+        steps: r.steps,
       });
     });
   return result;

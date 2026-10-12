@@ -12,7 +12,7 @@ export default function Modal({ open, onClose, title, subtitle, children, footer
     return () => document.removeEventListener('keydown', onKey);
   }, [open, onClose]);
   if (!open) return null;
-  return createPortal(
+  const content = (
     <div className="fixed inset-0 z-[90] flex items-start sm:items-center justify-center bg-[#071344]/40 p-2 sm:p-6 overflow-y-auto" onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}>
       <div role="dialog" aria-modal="true" className={`w-full ${SIZES[size]} bg-white rounded-xl shadow-pop pop-in my-auto flex flex-col max-h-[calc(100vh-1rem)] sm:max-h-[calc(100vh-3rem)]`}>
         <div className="flex items-start justify-between gap-4 px-5 py-4 border-b border-line">
@@ -25,9 +25,10 @@ export default function Modal({ open, onClose, title, subtitle, children, footer
         <div className="px-5 py-4 overflow-y-auto flex-1">{children}</div>
         {footer && <div className="px-5 py-3 border-t border-line flex justify-end gap-2 bg-[#FAFCFF] rounded-b-xl">{footer}</div>}
       </div>
-    </div>,
-    document.body,
+    </div>
   );
+  if (typeof document === 'undefined') return content;
+  return createPortal(content, document.body);
 }
 
 export function Drawer({ open, onClose, title, subtitle, children, footer, width = 520, headerExtra }) {
