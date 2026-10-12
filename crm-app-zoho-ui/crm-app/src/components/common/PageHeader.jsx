@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import Dropdown, { MenuDivider, MenuItem, MenuLabel } from './Dropdown';
 
-export const LAYOUTS = {
+const LAYOUTS = {
   list: { icon: List, label: 'List view' },
   kanban: { icon: Columns3, label: 'Kanban view' },
   grid: { icon: LayoutGrid, label: 'Grid view' },

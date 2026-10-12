@@ -1,5 +1,4 @@
 import { Building2, UserRound, Wallet, Contact } from 'lucide-react';
-import { fmtDMY, parseAnyDate } from '../homeConfig';
 
 // Stage pill colours follow the reference (yellow / blue / green / red pills).
 const STAGE_STYLE = {
@@ -40,13 +39,31 @@ export function SourcePill({ value }) {
   );
 }
 
-// Arrow-shaped tag (maroon "Not contactable" in the reference).
-const TAG_COLORS = { 'Not contactable': '#8F4256', 'Invalid Number': '#7A4FB5', Junk: '#A0662B', 'Hot Lead': '#C2410C', 'Product Demo': '#0F766E', 'IT Industry': '#1D4ED8', Lead: '#5B6B8C' };
+// Arrow-shaped tag with distinct colors for all 17 configured CRM tags.
+const TAG_COLORS = {
+  'Already Job Completed': '#0D9488',
+  'Asking Very Low Rate': '#D97706',
+  'Block List': '#B91C1C',
+  'Complicated': '#7C3AED',
+  'Deal Done': '#15803D',
+  'Duplicate': '#64748B',
+  'Foreign Number': '#0284C7',
+  'Future Requirements': '#2563EB',
+  'Insufficient Contact Det': '#EA580C',
+  'Invaild Number': '#7A4FB5',
+  'Job seeking': '#4F46E5',
+  'Junk': '#A0662B',
+  'Not contactable': '#8F4256',
+  'Offline Service': '#0F766E',
+  'Service Not Provided': '#BE123C',
+  'followup': '#0369A1',
+  'swich off': '#9333EA',
+};
 export function TagChip({ value }) {
   if (!value) return null;
   const color = TAG_COLORS[value] || '#5B6B8C';
   return (
-    <span className="relative inline-flex items-center h-[19px] pl-2 pr-3 text-[11.5px] font-semibold text-white rounded-l-[3px] whitespace-nowrap"
+    <span className="relative inline-flex items-center h-[21px] pl-2 pr-3 text-[12px] font-semibold text-white rounded-l-[3px] whitespace-nowrap"
       style={{ background: color, clipPath: 'polygon(0 0, calc(100% - 7px) 0, 100% 50%, calc(100% - 7px) 100%, 0 100%)' }}>
       {value}
     </span>
@@ -57,17 +74,6 @@ const REL_ICON = { Deal: Wallet, Account: Building2, Lead: UserRound, Contact };
 export function RelatedIcon({ module }) {
   const Icon = REL_ICON[module] || Wallet;
   return <Icon size={14} strokeWidth={1.8} className="shrink-0 text-[#3B3F4A]" />;
-}
-
-export const fmtMoney = (n) => `₹${(Number(n) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-export function fmtDateTime(v) {
-  const d = parseAnyDate(v);
-  if (!d) return '';
-  let h = d.getHours();
-  const ap = h >= 12 ? 'PM' : 'AM';
-  h = h % 12 || 12;
-  return `${fmtDMY(v)} ${String(h).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} ${ap}`;
 }
 
 /** Small animated bar-chart shown while a component loads (as in the reference). */

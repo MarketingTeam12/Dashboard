@@ -5,7 +5,7 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const PHONE = /^[+\d][\d\s-]{6,17}$/;
 const norm = (o) => (typeof o === 'string' ? { value: o, label: o } : o);
 
-export function validateFields(fields, values) {
+function validateFields(fields, values) {
   const errors = {};
   fields.forEach((f) => {
     if (f.hidden?.(values)) return;

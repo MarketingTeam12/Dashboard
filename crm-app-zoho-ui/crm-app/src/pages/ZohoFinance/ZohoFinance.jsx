@@ -3,14 +3,15 @@ import { Link } from 'react-router-dom';
 import {
   AlarmClock, BadgeCheck, ChevronDown, Download, Eye, FileText, IndianRupee, Layers, LayoutGrid, Pencil, Plus, Receipt, Trash2, Upload, Wallet,
 } from 'lucide-react';
-import { useCRM } from '../../context/CRMContext';
+import { useCRM } from '../../context/crmContextInstance';
 import PageHeader from '../../components/common/PageHeader';
 import StatCard from '../../components/common/StatCard';
 
 import DataTable from '../../components/common/DataTable';
 import Pagination from '../../components/common/Pagination';
 import useTable from '../../components/common/useTable';
-import StatusBadge, { badgeTone } from '../../components/common/StatusBadge';
+import StatusBadge from '../../components/common/StatusBadge';
+import { badgeTone } from '../../components/common/statusTone';
 import ActionMenu from '../../components/common/ActionMenu';
 import FormModal from '../../components/common/RecordForm';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
@@ -22,7 +23,7 @@ import DonutChart, { DonutLegend } from '../../components/charts/DonutChart';
 import BarChart from '../../components/charts/BarChart';
 import { ChartCard } from '../StageSummaryPercentage/StageSummaryPercentage';
 import { useRefresh, useUrlActions } from '../../components/common/hooks';
-import { useToast } from '../../components/common/Toast';
+import { useToast } from '../../components/common/toastContext';
 import { INVOICE_STATUSES, INVOICE_TYPES } from '../../data/seedData';
 import {
   MONTHS, addDays, axisCompact, balanceOf, deriveInvoiceStatus, fmtCompact, fmtDate, fmtINR, fmtNum, inRange, invoiceKpis, monthIndex, pct, todayISO, trend,
@@ -226,7 +227,7 @@ export default function ZohoFinance() {
           filterActive: filtersOpen, onFilter: () => setFiltersOpen((o) => !o),
           sortOptions: [{ key: 'number', label: 'Invoice Number' }, { key: 'invoiceDate', label: 'Invoice Date' }, { key: 'dueDate', label: 'Due Date' }, { key: 'amount', label: 'Amount' }, { key: 'balance', label: 'Balance' }],
           sort: table.sort, onSort: table.setSort, layouts: ['list', 'kanban', 'grid', 'chart'], layout, onLayout: setLayout,
-          onRefresh: refresh, refreshing, dense, onDense: () => setDense((d) => !d), module: 'Zoho Finance',
+          onRefresh: refresh, refreshing, dense, onDense: () => setDense((d) => !d), module: 'Finance',
           primary: { label: 'Create Invoice', onClick: () => setForm({ mode: 'create', record: blank() }), menu: [
             { label: 'Create Invoice', icon: Plus, onClick: () => setForm({ mode: 'create', record: blank() }) },
             { label: 'Create Credit Note', icon: Receipt, onClick: () => setForm({ mode: 'create', record: { ...blank(), type: 'Credit Note' } }) },

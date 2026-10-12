@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Building2, CircleDollarSign, Download, Eye, Pencil, Plus, Trash2, UserCog, UserPlus, ChevronDown, Search } from 'lucide-react';
-import { useCRM } from '../../context/CRMContext';
+import { useCRM } from '../../context/crmContextInstance';
 import PageHeader from '../../components/common/PageHeader';
 import StatCard from '../../components/common/StatCard';
 import FilterBar, { MoreFilters, SelectField } from '../../components/common/FilterBar';
@@ -17,7 +17,7 @@ import { Drawer, DetailGrid, SectionTitle } from '../../components/common/Modal'
 import BulkBar, { BulkButton } from '../../components/common/BulkBar';
 import { ChartView, GridView, KanbanView } from '../../components/common/Views';
 import { useRefresh, useUrlActions } from '../../components/common/hooks';
-import { ACCOUNT_STATUSES, ACCOUNT_TYPES, INDUSTRIES, LOCATIONS, AVATAR_COLORS } from '../../data/seedData';
+import { ACCOUNT_STATUSES, ACCOUNT_TYPES, INDUSTRIES, LEAD_TAGS, LOCATIONS, AVATAR_COLORS } from '../../data/seedData';
 import { balanceOf, fmtCompact, fmtDate, fmtINR, isOpen, sumBy, todayISO, trend } from '../../utils/calculations';
 import { exportCSV } from '../../utils/exportCSV';
 
@@ -105,12 +105,13 @@ export default function Accounts() {
     { name: 'annualRevenue', label: 'Annual Revenue (₹)', type: 'number', min: 0, required: true },
     { name: 'status', label: 'Account Status', type: 'select', options: ACCOUNT_STATUSES, required: true },
     { name: 'ownerId', label: 'Account Owner', type: 'select', options: ownerOptions, required: true },
+    { name: 'tag', label: 'Tag', type: 'select', options: LEAD_TAGS },
     { name: 'createdOn', label: 'Created On', type: 'date', required: true },
     { name: 'website', label: 'Website' },
     { name: 'phone', label: 'Phone', type: 'tel' },
     { name: 'description', label: 'Description', type: 'textarea', span: 2 },
   ];
-  const blank = () => ({ name: '', type: 'Prospect', industry: 'IT Services', location: 'Chennai', annualRevenue: '', status: 'New', ownerId: 'u1', createdOn: todayISO(), website: '', phone: '', description: '' });
+  const blank = () => ({ name: '', type: 'Prospect', industry: 'IT Services', location: 'Chennai', annualRevenue: '', status: 'New', ownerId: 'u1', tag: '', createdOn: todayISO(), website: '', phone: '', description: '' });
 
   useUrlActions({
     onCreate: () => setForm({ mode: 'create', record: blank() }),

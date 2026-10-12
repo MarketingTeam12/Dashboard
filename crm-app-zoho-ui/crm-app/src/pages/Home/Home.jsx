@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Building2, CalendarCheck2, Check, CheckCircle2, ChevronDown, ExternalLink, MoreHorizontal, Pencil, Plus, RotateCw, Settings2, Trash2 } from 'lucide-react';
-import { useCRM } from '../../context/CRMContext';
-import { useToast } from '../../components/common/Toast';
+import { useCRM } from '../../context/crmContextInstance';
+import { useToast } from '../../components/common/toastContext';
 import Dropdown, { MenuDivider } from '../../components/common/Dropdown';
 import FormModal from '../../components/common/RecordForm';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
@@ -16,7 +16,7 @@ import ReorderModal from './components/ReorderModal';
 import { ManageHomePagesModal, NewHomePageModal } from './components/HomePagesModal';
 import AddActivityModal from './components/AddActivityModal';
 
-const menuItem = 'w-full flex items-center gap-2.5 px-3 py-[7px] text-[13px] text-left text-ink hover:bg-[#F1F3FA]';
+const menuItem = 'w-full flex items-center gap-2.5 px-3 py-[7px] text-[14px] text-left text-ink hover:bg-[#F1F3FA]';
 const withCurrent = (list, value) => (value && !list.includes(value) ? [value, ...list] : list);
 
 export default function Home() {
@@ -259,21 +259,61 @@ export default function Home() {
   return (
     <div ref={rootRef} className={`home-root -mx-3 sm:-mx-[18px] -mt-2.5 px-3 sm:px-[14px] pt-0 pb-4 bg-[#EEF1FA] min-h-[calc(100vh-60px)] ${fullscreen ? 'fixed inset-0 z-[70] m-0 overflow-auto !min-h-screen pt-2' : ''}`}>
       {/* welcome bar */}
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-[10px]">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-[12px]">
         <div className="flex items-center gap-3 min-w-0">
-          <span className="h-[42px] w-[42px] shrink-0 rounded-[6px] border border-[#D9DCE4] bg-white flex items-center justify-center text-[#6B6F7B]">
+          <span className="h-[44px] w-[44px] shrink-0 rounded-[6px] border border-[#D9DCE4] bg-white flex items-center justify-center text-[#6B6F7B]">
             <Building2 size={24} strokeWidth={1.4} />
           </span>
-          <h1 className="text-[15px] font-semibold text-[#1F2329] truncate">Welcome {view.welcome}</h1>
+          <div>
+            <h1 className="text-[22px] font-bold text-[#1F2329] truncate leading-tight">Welcome {view.welcome}</h1>
+            <p className="text-[13.5px] text-[#64748B]">
+              Live CRM command center — Leads, Workqueue follow-ups, Messages, Deal Approvals & Analytics
+            </p>
+          </div>
         </div>
-        <div className="flex items-center gap-2.5 ml-auto">
+        <div className="flex flex-wrap items-center gap-2 ml-auto">
+          <button
+            type="button"
+            onClick={() => navigate('/leads?create=1')}
+            className="h-[34px] px-3 rounded-[4px] bg-[#2F55D4] hover:bg-[#2444B5] text-white text-[14px] font-semibold flex items-center gap-1.5"
+          >
+            <Plus size={14} /> New Lead
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/workqueue')}
+            className="h-[34px] px-3 rounded-[4px] border border-[#D9DCE4] bg-white hover:bg-[#F8FAFC] text-[#1F2329] text-[14px] font-medium"
+          >
+            Workqueue ({(crm.tasks || []).filter((t) => t.status !== 'Completed').length})
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/messages')}
+            className="h-[34px] px-3 rounded-[4px] border border-[#D9DCE4] bg-white hover:bg-[#F8FAFC] text-[#1F2329] text-[14px] font-medium"
+          >
+            Messages ({(crm.messages || []).filter((m) => m.status === 'Unread' || m.read === false).length})
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/deal-approvals')}
+            className="h-[34px] px-3 rounded-[4px] border border-[#D9DCE4] bg-white hover:bg-[#F8FAFC] text-[#1F2329] text-[14px] font-medium"
+          >
+            Deal Approvals
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/dashboard')}
+            className="h-[34px] px-3 rounded-[4px] border border-[#D9DCE4] bg-white hover:bg-[#F8FAFC] text-[#2F55D4] text-[14px] font-semibold"
+          >
+            Analytics Dashboard
+          </button>
           <button type="button" title="Refresh" aria-label="Refresh Home page" onClick={() => refresh(visible.map((c) => c.id))}
-            className="h-8 w-8 rounded flex items-center justify-center text-[#4B4F5C] hover:bg-white hover:text-[#4F55C9]">
+            className="h-[34px] w-[34px] rounded flex items-center justify-center text-[#4B4F5C] hover:bg-white hover:text-[#4F55C9]">
             <RotateCw size={15} className={loadingIds.size ? 'animate-spin' : ''} />
           </button>
           <Dropdown align="right" width={240} trigger={(open) => (
             <button type="button" aria-label="Select Home page" title={view.name}
-              className={`h-[30px] w-[160px] pl-2.5 pr-1.5 rounded-[4px] border bg-white flex items-center gap-1 text-[12.5px] text-[#1F2329] ${open ? 'border-[#4F55C9]' : 'border-[#D9DCE4] hover:border-[#B8BCC8]'}`}>
+              className={`h-[34px] w-[180px] pl-3 pr-2 rounded-[4px] border bg-white flex items-center gap-1 text-[14px] text-[#1F2329] ${open ? 'border-[#4F55C9]' : 'border-[#D9DCE4] hover:border-[#B8BCC8]'}`}>
               <span className="flex-1 text-left truncate">{view.name}</span>
               <ChevronDown size={14} className="text-[#6B6F7B] shrink-0" />
             </button>
@@ -296,7 +336,7 @@ export default function Home() {
           </Dropdown>
           <Dropdown align="right" width={190} trigger={(open) => (
             <button type="button" aria-label="Home page options" title="More"
-              className={`h-[30px] w-[36px] rounded-[4px] border bg-white flex items-center justify-center text-[#1F2329] ${open ? 'border-[#4F55C9]' : 'border-[#D9DCE4] hover:border-[#B8BCC8]'}`}>
+              className={`h-[34px] w-[36px] rounded-[4px] border bg-white flex items-center justify-center text-[#1F2329] ${open ? 'border-[#4F55C9]' : 'border-[#D9DCE4] hover:border-[#B8BCC8]'}`}>
               <MoreHorizontal size={16} />
             </button>
           )}>
@@ -311,9 +351,113 @@ export default function Home() {
         </div>
       </div>
 
+      {/* Zoho CRM End-to-End Business Workflow Pipeline */}
+      <div className="mb-[12px] bg-white rounded-[6px] border border-[#D9DCE4] px-4 py-3 shadow-sm">
+        <div className="flex items-center justify-between mb-2.5">
+          <h2 className="text-[16px] font-bold text-[#1F2329]">
+            Zoho CRM Live Business Workflow Pipeline
+          </h2>
+          <span className="text-[13px] text-[#64748B]">
+            Click any stage to open its live records
+          </span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-5 lg:grid-cols-10 gap-2">
+          {[
+            {
+              step: '1. Lead Source',
+              count: new Set((crm.leads || []).map((l) => l.source || l.leadSource).filter(Boolean)).size,
+              unit: 'Sources',
+              color: '#0EA5E9',
+              onClick: () => navigate('/leads?view=Website'),
+            },
+            {
+              step: '2. Lead Creation',
+              count: (crm.leads || []).length,
+              unit: 'Total Leads',
+              color: '#2F55D4',
+              onClick: () => navigate('/leads?view=All+Leads'),
+            },
+            {
+              step: '3. Assignment',
+              count: (crm.leads || []).filter((l) => l.status === 'Assigned' || l.ownerId).length,
+              unit: 'Assigned',
+              color: '#10B981',
+              onClick: () => navigate('/leads?view=My+Leads'),
+            },
+            {
+              step: '4. Call/Follow-up',
+              count: (crm.tasks || []).filter((t) => t.status !== 'Completed').length,
+              unit: 'Open Tasks',
+              color: '#F59E0B',
+              onClick: () => navigate('/workqueue'),
+            },
+            {
+              step: '5. Qualification',
+              count: (crm.leads || []).filter((l) => l.status === 'Qualified' || l.status === 'Contacted' || l.status === 'Followup').length,
+              unit: 'Qualified',
+              color: '#8B5CF6',
+              onClick: () => navigate('/leads'),
+            },
+            {
+              step: '6. Conversion',
+              count: (crm.leads || []).filter((l) => l.status === 'Converted').length,
+              unit: 'Converted',
+              color: '#7C3AED',
+              onClick: () => navigate('/leads'),
+            },
+            {
+              step: '7. Deal Creation',
+              count: (crm.deals || []).length,
+              unit: 'Deals',
+              color: '#2563EB',
+              onClick: () => navigate('/deals'),
+            },
+            {
+              step: '8. Approval',
+              count: (crm.deals || []).filter((d) => d.approvalStatus === 'Pending' || d.stage === 'Negotiation' || d.stage === 'Proposal').length,
+              unit: 'In Review',
+              color: '#EC4899',
+              onClick: () => navigate('/deal-approvals'),
+            },
+            {
+              step: '9. Deal Status',
+              count: (crm.deals || []).filter((d) => String(d.stage || '').includes('Won')).length,
+              unit: 'Closed Won',
+              color: '#059669',
+              onClick: () => navigate('/deals'),
+            },
+            {
+              step: '10. Reporting',
+              count: 10,
+              unit: 'Dashboards',
+              color: '#1E293B',
+              onClick: () => navigate('/dashboard'),
+            },
+          ].map((item) => (
+            <button
+              key={item.step}
+              type="button"
+              onClick={item.onClick}
+              className="flex flex-col justify-between p-2.5 rounded border border-[#E2E8F0] hover:border-[#2F55D4] hover:bg-[#F8FAFF] text-left transition group"
+            >
+              <div className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                <span className="text-[12.5px] font-semibold text-[#334155] group-hover:text-[#2F55D4] truncate">
+                  {item.step}
+                </span>
+              </div>
+              <div className="mt-1 flex items-baseline justify-between gap-1">
+                <span className="text-[15px] font-bold text-[#0F172A]">{item.count}</span>
+                <span className="text-[12px] text-[#64748B] truncate">{item.unit}</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* components */}
       {visible.length ? (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-[10px]">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-[14px]">
           {visible.map((c) => {
             const { rows, columns } = dataFor(c);
             return (
@@ -338,11 +482,11 @@ export default function Home() {
         </div>
       ) : (
         <div className="bg-white rounded-[6px] py-16 px-4 text-center">
-          <p className="text-[14px] font-medium text-[#1F2329]">This Home page has no components to show.</p>
-          <p className="text-[13px] text-ink-500 mt-1">Add a component, or show hidden ones from Reorder.</p>
+          <p className="text-[16px] font-medium text-[#1F2329]">This Home page has no components to show.</p>
+          <p className="text-[14px] text-ink-500 mt-1">Add a component, or show hidden ones from Reorder.</p>
           <div className="flex justify-center gap-2 mt-4">
-            <button className="btn-primary h-9" onClick={() => setEditor({ component: null })}><Plus size={15} /> Add Component</button>
-            {view.components.length > 0 && <button className="btn-secondary h-9" onClick={() => setReorderOpen(true)}>Reorder</button>}
+            <button className="btn-primary h-9 text-[14px]" onClick={() => setEditor({ component: null })}><Plus size={15} /> Add Component</button>
+            {view.components.length > 0 && <button className="btn-secondary h-9 text-[14px]" onClick={() => setReorderOpen(true)}>Reorder</button>}
           </div>
         </div>
       )}

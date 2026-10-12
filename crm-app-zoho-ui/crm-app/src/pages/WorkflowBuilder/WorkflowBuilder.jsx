@@ -4,7 +4,7 @@ import { ReactFlowProvider } from '@xyflow/react';
 import {
   Activity, AlertTriangle, ArrowLeft, CheckCircle2, ClipboardCheck, Copy, FlaskConical, GitBranch, History, ListChecks, Pencil, Play, Plus, Save, Trash2, Workflow, X, Zap,
 } from 'lucide-react';
-import { useCRM } from '../../context/CRMContext';
+import { useCRM } from '../../context/crmContextInstance';
 import StatCard from '../../components/common/StatCard';
 import StatusBadge from '../../components/common/StatusBadge';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
@@ -13,11 +13,10 @@ import ActionMenu from '../../components/common/ActionMenu';
 import SearchInput from '../../components/common/SearchInput';
 import { SelectField } from '../../components/common/FilterBar';
 import { UserAvatar } from '../../components/common/Avatar';
-import { useToast } from '../../components/common/Toast';
+import { useToast } from '../../components/common/toastContext';
 import { useUrlActions } from '../../components/common/hooks';
 import WorkflowCanvas from '../../workflows/WorkflowCanvas';
-import { WorkflowUI } from '../../workflows/WorkflowNode';
-import { ACTION_ICONS } from '../../workflows/ActionNode';
+import { ACTION_ICONS, WorkflowUI } from '../../workflows/workflowUI';
 import {
   ACTIONS, MODULE_COLLECTION, MODULE_FIELDS, OPERATORS, STATUS_FIELD, TRIGGERS, TRIGGER_FIELD, TRIGGER_MODULE, WF_MODULES,
   evaluateWorkflow, fieldDef, recordLabel, validateWorkflow,

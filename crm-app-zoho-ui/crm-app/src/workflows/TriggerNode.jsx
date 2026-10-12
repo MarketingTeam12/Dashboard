@@ -1,6 +1,7 @@
 import { Handle, Position } from '@xyflow/react';
 import { Zap } from 'lucide-react';
-import WorkflowNode, { AddStepMenu, useWorkflowUI } from './WorkflowNode';
+import WorkflowNode, { AddStepMenu } from './WorkflowNode';
+import { useWorkflowUI } from './workflowUI';
 import { fieldDef } from './workflowEngine';
 
 export default function TriggerNode({ id, data, selected }) {

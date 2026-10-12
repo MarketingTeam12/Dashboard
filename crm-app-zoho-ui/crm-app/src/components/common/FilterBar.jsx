@@ -26,7 +26,7 @@ export function SelectField({ label, value, onChange, options, allLabel, classNa
   );
 }
 
-export const rangeLabel = (r) => (r?.from || r?.to ? `${r.from ? fmtDate(r.from) : 'Start'} - ${r.to ? fmtDate(r.to) : 'Today'}` : 'All time');
+const rangeLabel = (r) => (r?.from || r?.to ? `${r.from ? fmtDate(r.from) : 'Start'} - ${r.to ? fmtDate(r.to) : 'Today'}` : 'All time');
 
 export function DateRangePicker({ label, value, onChange, presets, className = '', size = 'md', placeholder }) {
   const [draft, setDraft] = useState(value || { from: '', to: '' });

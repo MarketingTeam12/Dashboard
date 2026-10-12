@@ -4,7 +4,7 @@ import {
   Search, ChevronDown, ChevronLeft, ChevronRight, Eye, Pencil, Trash2,
   Sparkles, Zap, Activity, CheckCircle2, AlertCircle, RefreshCw, X, PlayCircle
 } from 'lucide-react';
-import { useCRM } from '../../context/CRMContext';
+import { useCRM } from '../../context/crmContextInstance';
 import { Drawer, DetailGrid, SectionTitle } from '../../components/common/Modal';
 
 function Sparkline({ color = '#2F7BF5', heights = [20, 35, 45, 30, 60, 80, 95] }) {

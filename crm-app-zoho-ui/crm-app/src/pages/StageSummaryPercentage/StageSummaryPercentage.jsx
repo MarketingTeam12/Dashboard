@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronDown, Clock3, Coins, Download, Handshake, Layers, Trophy, Upload, XCircle } from 'lucide-react';
-import { useCRM } from '../../context/CRMContext';
+import { useCRM } from '../../context/crmContextInstance';
 import { ViewTabs, Toolbar } from '../../components/common/PageHeader';
 import StatCard from '../../components/common/StatCard';
 import { DateRangePicker, SelectField } from '../../components/common/FilterBar';

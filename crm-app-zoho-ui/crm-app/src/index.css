@@ -3,8 +3,8 @@
 @tailwind utilities;
 
 @layer base {
-  html { -webkit-text-size-adjust: 100%; }
-  body { @apply bg-page text-ink font-sans antialiased; font-feature-settings: 'cv11', 'ss01'; }
+  html { -webkit-text-size-adjust: 100%; font-size: 16px; }
+  body { @apply bg-page text-ink font-sans antialiased text-[14px] leading-normal; font-feature-settings: 'cv11', 'ss01'; }
   :focus-visible { outline: 2px solid #1262E0; outline-offset: 2px; }
   button { -webkit-tap-highlight-color: transparent; }
 }
@@ -14,11 +14,11 @@
   .btn-primary { @apply h-10 px-4 rounded-lg bg-primary text-white text-[14px] font-medium hover:bg-primary-600 inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed; }
   .btn-secondary { @apply h-10 px-4 rounded-lg border border-line bg-white text-ink text-[14px] font-medium hover:bg-page inline-flex items-center justify-center gap-2 disabled:opacity-50; }
   .btn-danger { @apply h-10 px-4 rounded-lg bg-danger text-white text-[14px] font-medium hover:bg-danger-700 inline-flex items-center justify-center gap-2; }
-  .input { @apply w-full h-10 px-3 rounded-lg border border-line bg-white text-[13.5px] text-ink placeholder:text-ink-400 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/15; }
+  .input { @apply w-full h-10 px-3 rounded-lg border border-line bg-white text-[14px] text-ink placeholder:text-ink-400 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/15; }
   .icon-btn { @apply h-[34px] w-[34px] rounded-lg border border-line bg-white flex items-center justify-center text-ink-600 hover:bg-page hover:text-primary; }
   .icon-btn-primary { @apply h-[34px] w-[34px] rounded-lg border border-line bg-white flex items-center justify-center text-primary hover:bg-primary-50; }
-  .th { @apply h-[46px] px-2 text-[12.5px] font-semibold text-ink whitespace-nowrap border-b border-line; }
-  .td { @apply px-2 border-b border-line-soft text-ink-600 align-middle; }
+  .th { @apply h-[46px] px-2.5 text-[13.5px] font-semibold text-ink whitespace-nowrap border-b border-line; }
+  .td { @apply px-2.5 text-[14px] border-b border-line-soft text-ink-600 align-middle; }
   .cb { @apply h-[17px] w-[17px] rounded border-line text-primary cursor-pointer accent-[#1262E0]; }
   .link { @apply text-primary hover:underline; }
   .chart-card { @apply card px-3.5 py-3; }

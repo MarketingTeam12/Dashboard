@@ -1,6 +1,6 @@
 import { ArrowDown, ArrowUp } from 'lucide-react';
 
-export const TONES = {
+const TONES = {
   violet: { bg: '#F0E8FF', fg: '#8B3DF0', bar: '#A970F5', tint: 'linear-gradient(135deg,#F7F2FF 0%,#FFFFFF 70%)' },
   green: { bg: '#DDF6EA', fg: '#12B76A', bar: '#22C483', tint: 'linear-gradient(135deg,#EEFBF4 0%,#FFFFFF 70%)' },
   amber: { bg: '#FFF1D6', fg: '#F5A524', bar: '#FFBE3D', tint: 'linear-gradient(135deg,#FFF8EA 0%,#FFFFFF 70%)' },

@@ -34,6 +34,17 @@ export function inOriginalFormat(original, iso) {
   return iso;
 }
 
+export const fmtMoney = (n) => `₹${(Number(n) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+export function fmtDateTime(v) {
+  const d = parseAnyDate(v);
+  if (!d) return '';
+  let h = d.getHours();
+  const ap = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return `${fmtDMY(v)} ${String(h).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} ${ap}`;
+}
+
 function range(kind) {
   const now = new Date();
   const today = parseAnyDate(todayISO());

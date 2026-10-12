@@ -6,7 +6,7 @@ import ConditionNode from './ConditionNode';
 import ActionNode from './ActionNode';
 
 const nodeTypes = { trigger: TriggerNode, condition: ConditionNode, action: ActionNode };
-export const edgeStyle = (e) => ({
+const edgeStyle = (e) => ({
   ...e,
   type: 'smoothstep',
   markerEnd: { type: MarkerType.ArrowClosed, color: '#9BB1D3' },

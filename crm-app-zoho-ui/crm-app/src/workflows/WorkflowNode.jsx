@@ -1,16 +1,7 @@
-import { createContext, useContext } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import Dropdown, { MenuItem, MenuLabel } from '../components/common/Dropdown';
 import { ACTIONS } from './workflowEngine';
-
-export const WorkflowUI = createContext(null);
-export const useWorkflowUI = () => useContext(WorkflowUI);
-
-export const KIND_STYLE = {
-  trigger: { bar: '#1262E0', soft: '#E8F1FF', label: 'Trigger' },
-  condition: { bar: '#F59E0B', soft: '#FFF4D6', label: 'Condition' },
-  action: { bar: '#12B76A', soft: '#DFF6EA', label: 'Action' },
-};
+import { KIND_STYLE, useWorkflowUI } from './workflowUI';
 
 export function AddStepMenu({ nodeId, handle, label = 'Add step', tone = 'primary' }) {
   const ui = useWorkflowUI();

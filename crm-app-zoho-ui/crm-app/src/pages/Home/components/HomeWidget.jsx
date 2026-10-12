@@ -5,8 +5,8 @@ import {
 import Dropdown, { MenuDivider } from '../../../components/common/Dropdown';
 import ConfirmDialog from '../../../components/common/ConfirmDialog';
 import { exportCSV } from '../../../utils/exportCSV';
-import { fmtDMY, parseAnyDate, splitRelated } from '../homeConfig';
-import { RelatedIcon, SourcePill, StagePill, TagChip, WidgetLoader, fmtDateTime, fmtMoney } from './cells';
+import { fmtDateTime, fmtDMY, fmtMoney, parseAnyDate, splitRelated } from '../homeConfig';
+import { RelatedIcon, SourcePill, StagePill, TagChip, WidgetLoader } from './cells';
 import ManageColumnsModal from './ManageColumnsModal';
 
 const DEFAULT_WIDTH = { link: 160, customLink: 170, date: 150, datetime: 170, currency: 120, stage: 160, tag: 300, source: 160, related: 150, account: 170, text: 150, bool: 100 };
@@ -24,7 +24,7 @@ function compare(a, b) {
   return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
 }
 
-const menuItem = 'w-full flex items-center gap-2.5 px-3 py-[7px] text-[13px] text-left text-ink hover:bg-[#F1F3FA] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent';
+const menuItem = 'w-full flex items-center gap-2.5 px-3 py-[7px] text-[14px] text-left text-ink hover:bg-[#F1F3FA] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent';
 
 /**
  * Generic Home page list component.
@@ -160,20 +160,20 @@ export default function HomeWidget({
   return (
     <section className="group/w bg-white rounded-[6px] shadow-[0_0_0_1px_rgba(16,24,64,0.04)] flex flex-col h-[380px] min-w-0" aria-label={component.title}>
       {/* title row */}
-      <div className="flex items-center justify-between gap-2 px-4 pt-4 h-[42px]">
+      <div className="flex items-center justify-between gap-2 px-4 pt-4 h-[44px]">
         {editingName ? (
           <div className="flex items-center gap-1.5 min-w-0 flex-1">
             <input autoFocus value={nameDraft} maxLength={60} aria-label="Display name"
               onChange={(e) => { setNameDraft(e.target.value); setNameError(''); }}
               onKeyDown={(e) => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') setEditingName(false); }}
-              className={`h-7 px-2 text-[13px] font-semibold text-[#1F2329] border rounded min-w-0 w-[220px] focus:outline-none ${nameError ? 'border-danger' : 'border-[#4F55C9]'}`} />
-            <button type="button" onClick={saveName} className="h-7 w-7 rounded bg-[#4F55C9] text-white flex items-center justify-center" aria-label="Save name"><Check size={14} /></button>
-            <button type="button" onClick={() => setEditingName(false)} className="h-7 w-7 rounded border border-line text-ink-500 flex items-center justify-center" aria-label="Cancel"><X size={14} /></button>
-            {nameError && <span className="text-[11.5px] text-danger-700 truncate">{nameError}</span>}
+              className={`h-8 px-2.5 text-[14px] font-semibold text-[#1F2329] border rounded min-w-0 w-[220px] focus:outline-none ${nameError ? 'border-danger' : 'border-[#4F55C9]'}`} />
+            <button type="button" onClick={saveName} className="h-8 w-8 rounded bg-[#4F55C9] text-white flex items-center justify-center" aria-label="Save name"><Check size={14} /></button>
+            <button type="button" onClick={() => setEditingName(false)} className="h-8 w-8 rounded border border-line text-ink-500 flex items-center justify-center" aria-label="Cancel"><X size={14} /></button>
+            {nameError && <span className="text-[12.5px] text-danger-700 truncate">{nameError}</span>}
           </div>
         ) : (
           <div className="flex items-center gap-2.5 min-w-0">
-            <h2 className="text-[13px] font-semibold text-[#1F2329] truncate">{component.title}</h2>
+            <h2 className="text-[16px] font-semibold text-[#1F2329] truncate">{component.title}</h2>
             <button type="button" onClick={onRefresh} title="Refresh"
               className="text-[#4B4F5C] hover:text-[#4F55C9] md:opacity-0 md:group-hover/w:opacity-100 focus:opacity-100 transition-opacity" aria-label={`Refresh ${component.title}`}>
               <RotateCw size={14} className={loading ? 'animate-spin' : ''} />
@@ -204,18 +204,18 @@ export default function HomeWidget({
       </div>
 
       {/* sort row */}
-      <div className="flex items-center gap-3 px-4 h-[26px]">
+      <div className="flex items-center gap-3 px-4 h-[28px]">
         <Dropdown width={250} trigger={
-          <button type="button" className={`inline-flex items-center gap-1 text-[12.5px] ${sort ? 'text-[#4F55C9] font-medium' : 'text-[#1F2329]'} hover:text-[#4F55C9]`}>
-            <ArrowDownUp size={12} />
+          <button type="button" className={`inline-flex items-center gap-1 text-[14px] ${sort ? 'text-[#4F55C9] font-medium' : 'text-[#1F2329]'} hover:text-[#4F55C9]`}>
+            <ArrowDownUp size={13} />
             {sort ? `Sort: ${colByKey[sort.key]?.label || ''} ${sort.dir === 'desc' ? '↓' : '↑'}` : 'Sort'}
           </button>
         }>
           {(close) => <SortPanel columns={columns} sort={sort} onApply={(s) => { onUpdate({ sort: s }); setPage(1); close(); }} onCancel={close} />}
         </Dropdown>
         {onAddRecord && (
-          <button type="button" onClick={onAddRecord} className="inline-flex items-center gap-1 text-[12.5px] text-[#1F2329] hover:text-[#4F55C9]">
-            <Plus size={13} /> New Record
+          <button type="button" onClick={onAddRecord} className="inline-flex items-center gap-1 text-[14px] text-[#1F2329] hover:text-[#4F55C9]">
+            <Plus size={14} /> New Record
           </button>
         )}
       </div>
@@ -224,17 +224,17 @@ export default function HomeWidget({
       <div className="relative flex-1 min-h-0 mt-1.5">
         {loading ? <WidgetLoader /> : (
           <div ref={bodyRef} className="home-scroll h-full overflow-auto">
-            <table className="border-collapse text-[12.5px] text-[#1F2329]" style={{ tableLayout: 'fixed', width: tableWidth, minWidth: '100%' }}>
+            <table className="border-collapse text-[14px] text-[#1F2329]" style={{ tableLayout: 'fixed', width: tableWidth, minWidth: '100%' }}>
               <colgroup>
                 <col style={{ width: GUTTER }} />
                 {columns.map((c) => <col key={c.key} style={{ width: widthOf(c) }} />)}
                 <col style={{ width: SETTINGS_COL }} />
               </colgroup>
               <thead className="sticky top-0 z-[2] bg-white">
-                <tr className="h-[30px]">
+                <tr className="h-[34px] text-[13.5px]">
                   <th className="border-y border-[#E0E1E5]" />
                   {columns.map((c) => (
-                    <th key={c.key} className={`relative border-y border-[#E0E1E5] px-2 font-medium text-left ${c.align === 'right' ? 'text-right' : ''}`}>
+                    <th key={c.key} className={`relative border-y border-[#E0E1E5] px-2.5 font-semibold text-left ${c.align === 'right' ? 'text-right' : ''}`}>
                       <span className="inline-flex items-center gap-1 max-w-full truncate">
                         <span className="truncate">{c.label}</span>
                         {c.info && <span title={c.info}><Info size={12} className="text-[#7A7F8C] shrink-0" /></span>}
@@ -272,13 +272,13 @@ export default function HomeWidget({
               <tbody>
                 {pageRows.map((r) => (
                   <tr key={r.id} className="group/row border-b border-[#EEF0F4] hover:bg-[#F4F6FB] align-top">
-                    <td className="px-2 py-2.5">
-                      <div className="flex items-center justify-end gap-2 h-[18px] md:invisible md:group-hover/row:visible focus-within:visible">
+                    <td className="px-2.5 py-2.5">
+                      <div className="flex items-center justify-end gap-2 h-[20px] md:invisible md:group-hover/row:visible focus-within:visible">
                         {rowActions?.(r)}
                       </div>
                     </td>
                     {columns.map((c) => (
-                      <td key={c.key} className={`px-2 py-2.5 leading-[18px] ${c.align === 'right' ? 'text-right' : ''} ${wrapCls}`}>
+                      <td key={c.key} className={`px-2.5 py-2.5 leading-[20px] ${c.align === 'right' ? 'text-right' : ''} ${wrapCls}`}>
                         {renderCell(c, r)}
                       </td>
                     ))}
@@ -287,13 +287,13 @@ export default function HomeWidget({
                 ))}
               </tbody>
             </table>
-            {!total && <div className="absolute inset-x-0 top-[44px] bottom-0 flex items-center justify-center text-[12.5px] text-ink-400">{emptyText}</div>}
+            {!total && <div className="absolute inset-x-0 top-[44px] bottom-0 flex items-center justify-center text-[14px] text-ink-400">{emptyText}</div>}
           </div>
         )}
       </div>
 
       {/* footer */}
-      <div className="flex items-center justify-between px-3.5 h-[38px] border-t border-[#EEF0F4] text-[12px] text-[#1F2329] shrink-0">
+      <div className="flex items-center justify-between px-4 h-[40px] border-t border-[#EEF0F4] text-[14px] text-[#1F2329] shrink-0">
         <span>Total Records <b className="font-semibold">{loading ? '…' : total}</b></span>
         <div className="flex items-center gap-2">
           <button type="button" aria-label="Previous page" disabled={page <= 1 || loading} onClick={() => setPage((p) => p - 1)}
@@ -319,12 +319,12 @@ function SortPanel({ columns, sort, onApply, onCancel }) {
   return (
     <div className="px-3 py-2 space-y-2.5">
       <label className="block">
-        <span className="block text-[11.5px] font-medium text-ink-500 mb-1">Sort by</span>
-        <select className="input h-8 text-[13px]" value={key} onChange={(e) => setKey(e.target.value)}>
+        <span className="block text-[14px] font-medium text-ink-500 mb-1">Sort by</span>
+        <select className="input h-8 text-[14px]" value={key} onChange={(e) => setKey(e.target.value)}>
           {columns.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
         </select>
       </label>
-      <div className="flex gap-4 text-[13px] text-ink">
+      <div className="flex gap-4 text-[14px] text-ink">
         {[['asc', 'Ascending'], ['desc', 'Descending']].map(([v, l]) => (
           <label key={v} className="inline-flex items-center gap-1.5 cursor-pointer">
             <input type="radio" name="sortdir" checked={dir === v} onChange={() => setDir(v)} className="accent-[#4F55C9]" />{l}
@@ -332,10 +332,10 @@ function SortPanel({ columns, sort, onApply, onCancel }) {
         ))}
       </div>
       <div className="flex items-center justify-between pt-1">
-        <button type="button" className="text-[12.5px] text-ink-500 hover:text-danger-700 disabled:opacity-40" disabled={!sort} onClick={() => onApply(null)}>Clear sort</button>
+        <button type="button" className="text-[14px] text-ink-500 hover:text-danger-700 disabled:opacity-40" disabled={!sort} onClick={() => onApply(null)}>Clear sort</button>
         <div className="flex gap-1.5">
-          <button type="button" className="h-7 px-2.5 rounded border border-line text-[12.5px] hover:bg-page" onClick={onCancel}>Cancel</button>
-          <button type="button" className="h-7 px-2.5 rounded bg-[#4F55C9] text-white text-[12.5px] hover:bg-[#4247B5] disabled:opacity-50" disabled={!key} onClick={() => onApply({ key, dir })}>Apply</button>
+          <button type="button" className="h-8 px-3 rounded border border-line text-[14px] hover:bg-page" onClick={onCancel}>Cancel</button>
+          <button type="button" className="h-8 px-3 rounded bg-[#4F55C9] text-white text-[14px] hover:bg-[#4247B5] disabled:opacity-50" disabled={!key} onClick={() => onApply({ key, dir })}>Apply</button>
         </div>
       </div>
     </div>

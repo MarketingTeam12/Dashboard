@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useCRM } from '../../context/CRMContext';
+import { useCRM } from '../../context/crmContextInstance';
 import { STAGE_PROBABILITY, fmtINR } from '../../utils/calculations';
 
 /** Forecast = open + won deal value per owner, weighted by stage probability */

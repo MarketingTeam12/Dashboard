@@ -1,14 +1,15 @@
-import { useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { CalendarRange, ChevronDown, Clock3, Coins, Download, Eye, Pencil, Plus, Trash2, Trophy, UserCog, XCircle, Search } from 'lucide-react';
-import { useCRM } from '../../context/CRMContext';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeft, CalendarRange, ChevronDown, Clock3, Coins, Download, Eye, Pencil, Plus, Trash2, Trophy, UserCog, XCircle, Search } from 'lucide-react';
+import { useCRM } from '../../context/crmContextInstance';
 import PageHeader from '../../components/common/PageHeader';
 import StatCard from '../../components/common/StatCard';
 import FilterBar, { MoreFilters, SelectField } from '../../components/common/FilterBar';
 import DataTable from '../../components/common/DataTable';
 import Pagination from '../../components/common/Pagination';
 import useTable from '../../components/common/useTable';
-import StatusBadge, { badgeTone } from '../../components/common/StatusBadge';
+import StatusBadge from '../../components/common/StatusBadge';
+import { badgeTone } from '../../components/common/statusTone';
 import { UserAvatar } from '../../components/common/Avatar';
 import ActionMenu from '../../components/common/ActionMenu';
 import FormModal from '../../components/common/RecordForm';
@@ -19,7 +20,7 @@ import BulkBar, { BulkButton } from '../../components/common/BulkBar';
 import { ChartView, GridView, KanbanView } from '../../components/common/Views';
 import DealDetail from './DealDetail';
 import { useRefresh, useUrlActions } from '../../components/common/hooks';
-import { DEAL_SOURCES, DEPARTMENTS } from '../../data/seedData';
+import { DEAL_SOURCES, DEPARTMENTS, LEAD_TAGS } from '../../data/seedData';
 import {
   OPEN_STAGES, STAGES, STAGE_COLORS, STAGE_PROBABILITY, dealKpis, fmtCompact, fmtDate, fmtINR, inRange, isOpen, sumBy, todayISO, trend,
 } from '../../utils/calculations';
@@ -29,7 +30,7 @@ const DEFAULT_RANGE = { from: '2026-01-01', to: '2026-12-31' };
 const EMPTY = { stage: '', owner: '', account: '', source: '', department: '', minAmt: '', maxAmt: '', closeFrom: '', closeTo: '' };
 const BAR = { Qualification: '#A970F5', 'Needs Analysis': '#FF7B3A', Proposal: '#2F7BF5', Negotiation: '#FFBB28', 'Closed Won': '#12C26B', 'Closed Lost': '#FF3344' };
 
-export function stagePatch(deal, stage) {
+function stagePatch(deal, stage) {
   const patch = { stage, probability: STAGE_PROBABILITY[stage] };
   if (stage === 'Closed Lost') patch.lostAtStage = isOpen(deal) ? deal.stage : deal.lostAtStage || 'Qualification';
   else patch.lostAtStage = '';
@@ -51,6 +52,7 @@ function monthly(rows) {
 }
 
 export default function Deals() {
+  const { id: routeParamId } = useParams();
   const { deals, oldDeals, accounts, contacts, users, accountName, contactName, userName, createRecord, updateRecord, deleteRecords, accountsById } = useCRM();
   const navigate = useNavigate();
   const { refreshing, refresh } = useRefresh('Deals');
@@ -62,10 +64,14 @@ export default function Deals() {
   const [range, setRange] = useState(DEFAULT_RANGE);
   const [f, setF] = useState(EMPTY);
   const [form, setForm] = useState(null);
-  const [viewing, setViewing] = useState(null);
+  const [viewing, setViewing] = useState(routeParamId || null);
   const [confirm, setConfirm] = useState(null);
   const [bulk, setBulk] = useState(null);
   const [quick, setQuick] = useState(null);
+
+  useEffect(() => {
+    if (routeParamId) setViewing(routeParamId);
+  }, [routeParamId]);
 
   const views = [
     { key: 'all', label: 'All Deals', test: () => true },
@@ -124,15 +130,24 @@ export default function Deals() {
     { name: 'ownerId', label: 'Deal Owner', type: 'select', options: ownerOptions, required: true },
     { name: 'source', label: 'Deal Source', type: 'select', options: DEAL_SOURCES, required: true },
     { name: 'department', label: 'Department', type: 'select', options: DEPARTMENTS, required: true },
+    { name: 'tag', label: 'Tag', type: 'select', options: LEAD_TAGS },
     { name: 'createdOn', label: 'Created On', type: 'date', required: true },
     { name: 'description', label: 'Description', type: 'textarea', span: 2 },
   ];
-  const blank = (p = {}) => ({ name: '', accountId: p.account || '', contactId: '', stage: 'Qualification', probability: 20, amount: '', closingDate: '', ownerId: 'u1', source: 'Website', department: 'Enterprise Sales', createdOn: todayISO(), description: '', lostAtStage: '' });
+  const blank = (p = {}) => ({ name: '', accountId: p.account || '', contactId: '', stage: 'Qualification', probability: 20, amount: '', closingDate: '', ownerId: 'u1', source: 'Website', department: 'Enterprise Sales', tag: '', createdOn: todayISO(), description: '', lostAtStage: '' });
 
   useUrlActions({
     onCreate: (p) => setForm({ mode: 'create', record: blank(p) }),
-    onOpen: (id) => deals.some((d) => d.id === id) && setViewing(id),
-    onParams: (p) => { if (p.stage) set('stage')(p.stage); if (p.view === 'kanban') setLayout('kanban'); },
+    onOpen: (id) => {
+      const exists = deals.some((d) => d.id === id) || (oldDeals || []).some((d) => d.id === id);
+      if (exists) setViewing(id);
+      else if (deals[0]) setViewing(deals[0].id);
+    },
+    onParams: (p) => {
+      if (p.stage) set('stage')(p.stage);
+      if (p.view === 'kanban') setLayout('kanban');
+      else if (p.view) setSavedView(p.view);
+    },
   });
 
   const submit = (v) => {
@@ -184,11 +199,34 @@ export default function Deals() {
 
   const rec = deals.find((d) => d.id === viewing);
   const selectedIds = [...table.selected];
+  const location = useLocation();
 
   return (
     <div>
+      {!viewing && location.state?.from && (
+        <div className="mb-2">
+          <button
+            type="button"
+            onClick={() => navigate(location.state.from)}
+            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-blue-50 text-[#2F7BF5] font-semibold text-xs hover:bg-blue-100 transition"
+          >
+            <ArrowLeft size={14} /> {location.state.fromLabel || 'Back'}
+          </button>
+        </div>
+      )}
       {viewing ? (
-        <DealDetail id={viewing} onClose={() => { setViewing(null); setQuick(null); }} />
+        <DealDetail
+          id={viewing}
+          onClose={() => {
+            if (location.state?.from) {
+              navigate(location.state.from);
+            } else {
+              setViewing(null);
+              setQuick(null);
+              if (routeParamId) navigate('/deals');
+            }
+          }}
+        />
       ) : (
         <div className="flex flex-col gap-3">
       <PageHeader

@@ -17,7 +17,7 @@ export function Logo() {
 const BG = '#1D2B5A';
 const ACTIVE = '#33477F';
 
-const row = 'flex items-center gap-3 h-[30px] text-[13px] text-[#E4E9F5] hover:bg-white/[0.08] transition-colors';
+const row = 'flex items-center gap-3 h-[34px] text-[14px] text-[#E4E9F5] hover:bg-white/[0.08] transition-colors';
 
 function Item({ it, onNavigate }) {
   return (
@@ -51,7 +51,7 @@ export default function Sidebar({ open, onClose }) {
         {/* Brand header: logo + name + dropdown + panel icon */}
         <div className="flex items-center gap-2 px-3 h-[46px] shrink-0">
           <Logo />
-          <span className="text-white text-[14px] font-semibold">CRM</span>
+          <span className="text-white text-[16px] font-semibold">CRM</span>
           <ChevronDown size={13} className="text-white/80 -ml-0.5" />
           <PanelLeft size={16} className="ml-auto text-[#AEBBDD] hidden lg:block" />
           <button className="ml-auto text-white/70 lg:hidden" onClick={onClose} aria-label="Close menu">
@@ -72,10 +72,10 @@ export default function Sidebar({ open, onClose }) {
             <button
               type="button"
               onClick={() => setTeamspaceOpen((o) => !o)}
-              className="w-full flex items-center justify-between px-3 h-[28px] text-white text-[13px] font-semibold"
+              className="w-full flex items-center justify-between px-3 h-[30px] text-white text-[14px] font-semibold"
             >
               <span className="flex items-center gap-2">
-                <span className="h-[18px] px-1 rounded bg-[#F0507E] text-white text-[9px] font-bold flex items-center justify-center">CT</span>
+                <span className="h-[18px] px-1 rounded bg-[#F0507E] text-white text-[10px] font-bold flex items-center justify-center">CT</span>
                 CRM Teamspace
               </span>
               {teamspaceOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -84,13 +84,13 @@ export default function Sidebar({ open, onClose }) {
             {teamspaceOpen && (
               <div className="mt-1.5">
                 <div className="relative px-[10px] mb-1.5">
-                  <Search size={12} className="absolute left-5 top-1/2 -translate-y-1/2 text-white/50" />
+                  <Search size={13} className="absolute left-5 top-1/2 -translate-y-1/2 text-white/50" />
                   <input
                     type="text"
                     placeholder="Search"
                     value={teamFilter}
                     onChange={(e) => setTeamFilter(e.target.value)}
-                    className="w-full h-[26px] pl-7 pr-2 rounded border border-white/25 bg-transparent text-[12px] text-white placeholder:text-white/50 focus:outline-none focus:border-white/60"
+                    className="w-full h-[30px] pl-7 pr-2 rounded border border-white/25 bg-transparent text-[14px] text-white placeholder:text-white/50 focus:outline-none focus:border-white/60"
                   />
                 </div>
                 <div className="space-y-[2px]">

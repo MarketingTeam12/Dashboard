@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Award, Bell, Building2, CalendarDays, CheckCheck, ChevronDown, CircleDollarSign, ClipboardList, Download, Grip,
-  LineChart, Menu, MessageSquare, Phone, Plus, Receipt, RotateCcw, Search, Settings, Sparkles, Store, Trash2, Users, Workflow,
+  LineChart, Menu, MessageSquare, Phone, Plus, Receipt, RotateCcw, Search, Settings, ShieldCheck, Sliders, Sparkles, Store, Trash2, Users, Workflow,
 } from 'lucide-react';
-import { useCRM } from '../../context/CRMContext';
+import { useCRM } from '../../context/crmContextInstance';
 import Dropdown, { MenuDivider, MenuItem, MenuLabel } from '../common/Dropdown';
 import { Drawer } from '../common/Modal';
 import Modal from '../common/Modal';
@@ -12,6 +12,8 @@ import ConfirmDialog from '../common/ConfirmDialog';
 import { UserAvatar } from '../common/Avatar';
 import { MODULES, moduleByPath } from './navConfig';
 import { balanceOf, fmtCompact, fmtDate, fmtTime, isOpen, isWon, isLost, pctLabel, sumBy, todayISO, addDays } from '../../utils/calculations';
+import ZohoCustomizationModal from '../../pages/Leads/ZohoCustomizationModal';
+import { useZohoCustomization } from '../../pages/Leads/zohoCustomizationConfig';
 
 const iconBtn = 'relative h-9 w-9 rounded-lg flex items-center justify-center text-ink-600 hover:bg-page';
 
@@ -127,12 +129,16 @@ export default function Topbar({ onMenu }) {
   const navigate = useNavigate();
   const mod = moduleByPath(pathname);
   const crm = useCRM();
-  const { notifications, calls, tasks, deals, users, markAllRead, markNotification, clearNotifications, resetDemo, db, contactName } = crm;
+  const { notifications, calls, tasks, deals, users, markAllRead, markNotification, clearNotifications, resetDemo, db, contactName, notify } = crm;
+  const { config: customConfig } = useZohoCustomization();
   const [aiOpen, setAiOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [setupTab, setSetupTab] = useState('columns');
   const unread = notifications.filter((n) => !n.read).length;
   const me = users[0];
+  const activeRoleLabel = customConfig?.activeRole || me.role;
   const today = todayISO();
 
   const upcoming = useMemo(() => [
@@ -245,10 +251,12 @@ export default function Topbar({ onMenu }) {
         )}
       </Dropdown>
 
-      <Dropdown width={240} align="right" className="hidden sm:inline-flex" trigger={<button className={iconBtn} aria-label="Settings"><Settings size={20} /></button>}>
+      <Dropdown width={250} align="right" className="hidden sm:inline-flex" trigger={<button className={iconBtn} aria-label="Settings"><Settings size={20} /></button>}>
         {(close) => (
           <>
-            <MenuLabel>Settings</MenuLabel>
+            <MenuLabel>CRM Setup & Settings</MenuLabel>
+            <MenuItem icon={Sliders} close={close} onClick={() => { setSetupTab('columns'); setSetupOpen(true); }}>CRM Setup & Customization</MenuItem>
+            <MenuItem icon={ShieldCheck} close={close} onClick={() => { setSetupTab('permissions'); setSetupOpen(true); }}>Role-Based Permissions</MenuItem>
             <MenuItem icon={Workflow} close={close} onClick={() => navigate('/workflows')}>Workflow automation</MenuItem>
             <MenuItem icon={Download} close={close} onClick={exportAll}>Export all data (JSON)</MenuItem>
             <MenuDivider />
@@ -262,7 +270,7 @@ export default function Topbar({ onMenu }) {
           <UserAvatar userId={me.id} size={34} />
           <div className="hidden lg:flex flex-col text-left">
             <span className="text-[13px] font-semibold text-ink whitespace-nowrap leading-tight">{me.name}</span>
-            <span className="text-[11px] text-ink-500 whitespace-nowrap leading-tight">{me.role}</span>
+            <span className="text-[11px] text-ink-500 whitespace-nowrap leading-tight">{activeRoleLabel}</span>
           </div>
           <ChevronDown size={14} className="hidden lg:block text-ink-500" />
         </button>
@@ -271,9 +279,11 @@ export default function Topbar({ onMenu }) {
           <>
             <div className="px-3 py-2 flex items-center gap-3">
               <UserAvatar userId={me.id} size={40} />
-              <div><div className="text-[14px] font-semibold text-ink">{me.name}</div><div className="text-[12px] text-ink-500">{me.role} · {me.email}</div></div>
+              <div><div className="text-[14px] font-semibold text-ink">{me.name}</div><div className="text-[12px] text-ink-500">{activeRoleLabel} · {me.email}</div></div>
             </div>
             <MenuDivider />
+            <MenuItem icon={Sliders} close={close} onClick={() => { setSetupTab('columns'); setSetupOpen(true); }}>CRM Setup & Customization</MenuItem>
+            <MenuItem icon={ShieldCheck} close={close} onClick={() => { setSetupTab('permissions'); setSetupOpen(true); }}>Role & Permissions ({activeRoleLabel})</MenuItem>
             <MenuItem icon={Sparkles} close={close} onClick={() => setAiOpen(true)}>CRM insights</MenuItem>
             <MenuItem icon={Trash2} danger close={close} onClick={() => setConfirmReset(true)}>Reset demo data</MenuItem>
           </>
@@ -294,6 +304,12 @@ export default function Topbar({ onMenu }) {
       </Dropdown>
 
       <Insights open={aiOpen} onClose={() => setAiOpen(false)} />
+      <ZohoCustomizationModal
+        open={setupOpen}
+        onClose={() => setSetupOpen(false)}
+        initialTab={setupTab}
+        onNotify={(msg, type) => notify && notify(msg, type)}
+      />
       <Modal open={searchOpen} onClose={() => setSearchOpen(false)} title="Search records" size="md">
         <div className="min-h-[300px]"><GlobalSearch autoFocus onDone={() => setSearchOpen(false)} /></div>
       </Modal>
