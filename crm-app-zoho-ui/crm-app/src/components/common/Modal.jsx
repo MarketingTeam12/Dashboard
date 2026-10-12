@@ -56,15 +56,20 @@ export function Drawer({ open, onClose, title, subtitle, children, footer, width
   );
 }
 
-export function DetailGrid({ items }) {
+export function DetailGrid({ items = [] }) {
   return (
     <dl className="grid grid-cols-2 gap-x-6 gap-y-3.5">
-      {items.filter(Boolean).map(([k, v]) => (
-        <div key={k} className="min-w-0">
-          <dt className="text-[12px] text-ink-400">{k}</dt>
-          <dd className="text-[13.5px] text-ink mt-0.5 break-words">{v ?? '—'}</dd>
-        </div>
-      ))}
+      {(items || []).filter(Boolean).map((item, idx) => {
+        const [k, v] = Array.isArray(item)
+          ? item
+          : [item.label ?? item.key ?? `item-${idx}`, item.value];
+        return (
+          <div key={k ?? idx} className="min-w-0">
+            <dt className="text-[12px] text-ink-400">{k}</dt>
+            <dd className="text-[13.5px] text-ink mt-0.5 break-words">{v ?? '—'}</dd>
+          </div>
+        );
+      })}
     </dl>
   );
 }

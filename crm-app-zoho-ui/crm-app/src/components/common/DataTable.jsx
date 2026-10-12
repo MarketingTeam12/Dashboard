@@ -28,10 +28,19 @@ export default function DataTable({
               return (
                 <th key={c.key} className={`th ${alignCls(c.align)} ${c.headerClassName || ''}`} style={c.width ? { width: c.width } : undefined}>
                   {c.sortable ? (
-                    <button type="button" onClick={() => table.onSort(c.key)} className={`group inline-flex items-center gap-1 ${c.align === 'center' ? 'justify-center' : ''} hover:text-primary`}>
-                      {c.header}
-                      <Icon size={12} className={active ? 'text-primary' : 'opacity-0 group-hover:opacity-60'} />
-                    </button>
+                    typeof c.header === 'string' ? (
+                      <button type="button" onClick={() => table.onSort(c.key)} className={`group inline-flex items-center gap-1 ${c.align === 'center' ? 'justify-center' : ''} hover:text-primary`}>
+                        {c.header}
+                        <Icon size={12} className={active ? 'text-primary' : 'opacity-0 group-hover:opacity-60'} />
+                      </button>
+                    ) : (
+                      <div className={`group inline-flex items-center gap-1 ${c.align === 'center' ? 'justify-center' : ''}`}>
+                        {c.header}
+                        <button type="button" onClick={() => table.onSort(c.key)} className="inline-flex items-center hover:text-primary" aria-label={`Sort by ${c.key}`}>
+                          <Icon size={12} className={active ? 'text-primary' : 'opacity-0 group-hover:opacity-60'} />
+                        </button>
+                      </div>
+                    )
                   ) : c.header}
                 </th>
               );
