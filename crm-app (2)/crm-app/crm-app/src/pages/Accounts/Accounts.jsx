@@ -9,6 +9,9 @@ import {
 } from 'lucide-react';
 import CreateAccount from './CreateAccount';
 import AccountDetail from './AccountDetail';
+import RecordTimeline from '../../components/common/RecordTimeline';
+import CSVImportModal from '../../components/common/CSVImportModal';
+import SpreadsheetView, { formatScreenshotDateTime } from '../../components/common/SpreadsheetView';
 import { useCRM } from '../../context/CRMContext';
 import PageHeader from '../../components/common/PageHeader';
 import DataTable from '../../components/common/DataTable';
@@ -224,6 +227,7 @@ export default function Accounts({ isCreatePage = false }) {
   const [accountModal, setAccountModal] = useState(null); // { mode: 'create'|'edit', record }
   const [viewingId, setViewingId] = useState(() => routeAccountId || searchParams.get('open') || searchParams.get('id') || null);
   const [detailTab, setDetailTab] = useState('overview'); // 'overview' | 'hierarchy' | 'related' | 'communications' | 'timeline'
+  const [timelineAccountId, setTimelineAccountId] = useState(null);
   const [ownerDetailUser, setOwnerDetailUser] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [bulkMode, setBulkMode] = useState(null); // 'owner' | 'type' | 'status' | 'rating'
@@ -234,11 +238,13 @@ export default function Accounts({ isCreatePage = false }) {
   const [composeEmailModal, setComposeEmailModal] = useState(null);
   const [noteInput, setNoteInput] = useState({ title: '', content: '' });
   const [attachmentInput, setAttachmentInput] = useState({ fileName: '', fileSize: '250 KB' });
+  const [csvImportOpen, setCsvImportOpen] = useState(false);
 
-  const openAccountDetail = (id) => {
+  const openAccountDetail = (id, tab = 'overview') => {
     if (!id) return;
     setViewingId(id);
-    setDetailTab('overview');
+    setTimelineAccountId(id);
+    setDetailTab(tab);
     navigate(`/accounts/${id}`);
   };
 
@@ -255,12 +261,14 @@ export default function Accounts({ isCreatePage = false }) {
   // Handle /accounts/:accountId, ?open=<id>, ?id=<id>, and ?create=1 URL deep links
   useEffect(() => {
     const create = searchParams.get('create');
-    const open = routeAccountId || searchParams.get('open') || searchParams.get('id');
+    const openParam = searchParams.get('open') || searchParams.get('id');
+    const open =
+      routeAccountId && routeAccountId !== 'create' && routeAccountId !== 'new'
+        ? routeAccountId
+        : openParam;
     if (create) {
-      openCreateAccountModal();
-      const next = new URLSearchParams(searchParams);
-      next.delete('create');
-      setSearchParams(next, { replace: true });
+      setViewingId(null);
+      setCreateViewOpen(true);
     } else if (open) {
       const found = accounts.find((a) => a.id === open);
       if (found) setViewingId(found.id);
@@ -434,6 +442,7 @@ export default function Accounts({ isCreatePage = false }) {
       parentAccount: (a) => accountsById[a.parentAccountId]?.name || '',
       billingCity: (a) => a.billingCity || a.location || '',
       createdTime: (a) => a.createdTime || a.createdOn || '',
+      status: (a) => a.status || 'Active',
     }),
     [userName, accountsById]
   );
@@ -1073,9 +1082,331 @@ export default function Accounts({ isCreatePage = false }) {
     [hiddenCols, counts, usersById, accountsById]
   );
 
+  // ==================== EXCEL-STYLE SPREADSHEET COLUMNS & HANDLERS ====================
+  const spreadsheetColumns = useMemo(
+    () => [
+      {
+        key: 'createdTime',
+        header: 'Created Time',
+        headerLabel: 'Created Time',
+        type: 'date',
+        sortable: true,
+        width: 175,
+        getValue: (a) => a.createdTime || a.createdOn || '2026-09-15',
+        renderCell: (a) => (
+          <span className="text-[12.5px] text-ink whitespace-nowrap">
+            {formatScreenshotDateTime(a.createdTime || a.createdOn || '2026-09-15')}
+          </span>
+        ),
+      },
+      {
+        key: 'owner',
+        header: 'Account Owner',
+        headerLabel: 'Account Owner',
+        type: 'select',
+        sortable: true,
+        width: 160,
+        options: users.map((u) => ({ value: u.id, label: u.name })),
+        getValue: (a) => a.ownerId || 'u1',
+        renderCell: (a) => (
+          <span className="text-[12.5px] text-ink whitespace-nowrap">
+            {userName(a.ownerId) || 'Arun Kumar'}
+          </span>
+        ),
+      },
+      {
+        key: 'name',
+        header: 'Account Name',
+        headerLabel: 'Account Name',
+        badge: 'aa ▾',
+        type: 'text',
+        required: true,
+        sortable: true,
+        width: 215,
+        getValue: (a) => a.name || '',
+        renderCell: (a) => (
+          <div className="flex items-center gap-2 min-w-0">
+            <AccountLogo account={a} size={22} />
+            <span className="font-medium text-[#1F6FEB] text-[13px] truncate">{a.name}</span>
+          </div>
+        ),
+        renderAccessory: (a) => (
+          <Link
+            to={`/accounts/${a.id}`}
+            onClick={() => openAccountDetail(a.id)}
+            title={`Open details for ${a.name}`}
+            className="text-[#1F6FEB]/70 hover:text-[#1F6FEB] p-0.5 rounded"
+          >
+            <ExternalLink size={11.5} />
+          </Link>
+        ),
+      },
+      {
+        key: 'gstin',
+        header: 'GST Number/GSTIN',
+        headerLabel: 'GSTIN',
+        type: 'text',
+        sortable: true,
+        width: 170,
+        getValue: (a) => a.gstin || a.gstNumber || '',
+        renderCell: (a, val) =>
+          val ? (
+            <span className="text-[12.5px] font-mono text-ink-700">{val}</span>
+          ) : (
+            <span className="text-ink-400">—</span>
+          ),
+      },
+      {
+        key: 'gstState',
+        header: 'GST State',
+        headerLabel: 'GST State',
+        type: 'text',
+        sortable: true,
+        width: 140,
+        getValue: (a) => a.gstState || a.billingState || '',
+        renderCell: (a, val) => (
+          <span className="text-[12.5px] text-ink-700 whitespace-nowrap">{val || '—'}</span>
+        ),
+      },
+      {
+        key: 'mobile',
+        header: 'Mobile',
+        headerLabel: 'Mobile',
+        type: 'phone',
+        sortable: true,
+        width: 170,
+        getValue: (a) => a.mobile || a.phone || '',
+        renderCell: (a, val) => (
+          <span className="text-[12.5px] text-ink font-mono whitespace-nowrap">{val || '—'}</span>
+        ),
+        renderAccessory: (a, val) =>
+          val ? (
+            <a
+              href={`tel:${String(val).replace(/\s+/g, '')}`}
+              title={`Call ${val}`}
+              className="w-4 h-4 rounded-full bg-[#10B981] hover:bg-[#059669] text-white flex items-center justify-center shrink-0 shadow-2xs transition-colors"
+            >
+              <Phone size={9} className="fill-current text-white" />
+            </a>
+          ) : null,
+      },
+      {
+        key: 'type',
+        header: 'Account Type',
+        headerLabel: 'Account Type',
+        type: 'select',
+        sortable: true,
+        width: 140,
+        options: ACCOUNT_TYPES.map((t) => ({ value: t, label: t })),
+        getValue: (a) => a.type || 'Customer',
+        renderCell: (a) => <StatusBadge kind="accountType" value={a.type} className="min-w-[76px]" />,
+      },
+      {
+        key: 'status',
+        header: 'Status',
+        headerLabel: 'Status',
+        type: 'select',
+        sortable: true,
+        width: 125,
+        options: ACCOUNT_STATUSES.map((s) => ({ value: s, label: s })),
+        getValue: (a) => a.status || 'Active',
+        renderCell: (a) => <StatusBadge kind="accountStatus" value={a.status || 'Active'} />,
+      },
+      {
+        key: 'industry',
+        header: 'Industry',
+        headerLabel: 'Industry',
+        type: 'select',
+        sortable: true,
+        width: 175,
+        options: INDUSTRIES.map((ind) => ({ value: ind, label: ind })),
+        getValue: (a) => a.industry || 'Information Technology',
+        renderCell: (a, val) => (
+          <span className="text-[12.5px] text-ink-700 whitespace-nowrap">{val || '—'}</span>
+        ),
+      },
+      {
+        key: 'annualRevenue',
+        header: 'Annual Revenue',
+        headerLabel: 'Annual Revenue',
+        type: 'number',
+        sortable: true,
+        width: 155,
+        getValue: (a) => Number(a.annualRevenue || 0),
+        renderCell: (a) => (
+          <span className="text-[12.5px] font-medium text-ink whitespace-nowrap">
+            {fmtINR(a.annualRevenue)}
+          </span>
+        ),
+      },
+      {
+        key: 'rating',
+        header: 'Rating',
+        headerLabel: 'Rating',
+        type: 'select',
+        sortable: true,
+        width: 125,
+        options: ACCOUNT_RATINGS.map((r) => ({ value: r, label: r })),
+        getValue: (a) => a.rating || 'Hot',
+        renderCell: (a) => (
+          <span
+            className="inline-flex items-center px-2 py-0.5 rounded text-[11.5px] font-medium border"
+            style={{
+              color: RATING_COLORS[a.rating] || '#475569',
+              borderColor: `${RATING_COLORS[a.rating] || '#94A3B8'}40`,
+              backgroundColor: `${RATING_COLORS[a.rating] || '#94A3B8'}12`,
+            }}
+          >
+            {a.rating || 'Active'}
+          </span>
+        ),
+      },
+      {
+        key: 'billingCity',
+        header: 'Billing City',
+        headerLabel: 'Billing City',
+        type: 'select',
+        allowCustom: true,
+        sortable: true,
+        width: 135,
+        options: LOCATIONS.map((loc) => ({ value: loc, label: loc })),
+        getValue: (a) => a.billingCity || a.location || 'Chennai',
+        renderCell: (a, val) => <span className="text-[12.5px] text-ink-700">{val || '—'}</span>,
+      },
+      {
+        key: 'website',
+        header: 'Website',
+        headerLabel: 'Website',
+        type: 'website',
+        sortable: true,
+        width: 175,
+        getValue: (a) => a.website || '',
+        renderCell: (a, val) =>
+          val ? (
+            <span className="text-[12.5px] text-[#1F6FEB] truncate block">{val}</span>
+          ) : (
+            <span className="text-ink-400">—</span>
+          ),
+      },
+      {
+        key: 'lastActivityTime',
+        header: 'Last Activity Time',
+        headerLabel: 'Last Activity Time',
+        type: 'date',
+        sortable: true,
+        width: 150,
+        getValue: (a) => a.lastActivityTime || a.createdTime || a.createdOn || '',
+        renderCell: (a, val) => (
+          <span className="text-[12px] text-ink-600 whitespace-nowrap">
+            {val ? fmtDate(val) : '—'}
+          </span>
+        ),
+      },
+    ],
+    [users, userName]
+  );
+
+  const handleSpreadsheetSaveAccountCell = (account, col, newValue) => {
+    const now = todayISO();
+    const patch = { modifiedTime: now, lastActivityTime: now, touched: true, hasRecordAction: true };
+
+    if (col.key === 'createdTime') {
+      patch.createdTime = newValue;
+      patch.createdOn = newValue;
+    } else if (col.key === 'owner') {
+      patch.ownerId = newValue;
+    } else if (col.key === 'name') {
+      patch.name = newValue;
+    } else if (col.key === 'gstin') {
+      patch.gstin = newValue;
+      patch.gstNumber = newValue;
+    } else if (col.key === 'gstState') {
+      patch.gstState = newValue;
+      patch.billingState = newValue;
+    } else if (col.key === 'mobile') {
+      patch.mobile = newValue;
+      if (!account.phone) patch.phone = newValue;
+    } else if (col.key === 'type') {
+      patch.type = newValue;
+    } else if (col.key === 'status') {
+      patch.status = newValue;
+    } else if (col.key === 'industry') {
+      patch.industry = newValue;
+    } else if (col.key === 'annualRevenue') {
+      patch.annualRevenue = Number(newValue || 0);
+    } else if (col.key === 'rating') {
+      patch.rating = newValue;
+    } else if (col.key === 'billingCity') {
+      patch.billingCity = newValue;
+      patch.location = newValue;
+    } else if (col.key === 'website') {
+      patch.website = newValue;
+    } else if (col.key === 'lastActivityTime') {
+      patch.lastActivityTime = newValue;
+    } else {
+      patch[col.key] = newValue;
+    }
+
+    updateRecord('accounts', account.id, patch);
+    toast.success(`Updated ${col.headerLabel || col.header} for ${patch.name || account.name}`);
+  };
+
+  const handleSpreadsheetAddAccount = (draft) => {
+    const accName = String(draft.name || '').trim();
+    if (!accName) {
+      return { error: 'Account Name is required.' };
+    }
+    const now = draft.createdTime || todayISO();
+    const created = createRecord('accounts', {
+      name: accName,
+      accountNumber: `ACC-${1001 + accounts.length + 1}`,
+      accountSite: 'Chennai HQ',
+      ownerId: draft.owner || activeUser?.id || 'u1',
+      gstin: draft.gstin || '',
+      gstNumber: draft.gstin || '',
+      gstState: draft.gstState || 'Tamil Nadu',
+      mobile: draft.mobile || '+91 98400 10000',
+      phone: draft.mobile || '+91 98400 10000',
+      type: draft.type || 'Customer',
+      status: draft.status || 'Active',
+      industry: draft.industry || 'Information Technology',
+      annualRevenue: Number(draft.annualRevenue || 25000000),
+      employees: 120,
+      rating: 'Hot',
+      ownership: 'Private',
+      billingCity: 'Chennai',
+      billingState: draft.gstState || 'Tamil Nadu',
+      billingCountry: 'India',
+      location: 'Chennai',
+      website: `www.${accName.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 14) || 'company'}.in`,
+      color: AVATAR_COLORS[accounts.length % AVATAR_COLORS.length],
+      createdOn: now,
+      createdTime: now,
+      modifiedTime: now,
+      lastActivityTime: now,
+      tags: ['Spreadsheet'],
+    });
+    toast.success(`Account "${created.name}" added to spreadsheet`);
+    table.setPage(1);
+    return { created };
+  };
+
   const selectedIds = [...table.selected];
   const activeAccountId = viewingId || routeAccountId || searchParams.get('open') || searchParams.get('id');
   const viewingAccount = activeAccountId ? accounts.find((a) => a.id === activeAccountId) || null : null;
+
+  const timelineAccountsPool = filteredAccounts.length > 0 ? filteredAccounts : accounts;
+  const selectedTimelineAccount = useMemo(() => {
+    if (timelineAccountId) {
+      const found = accounts.find((a) => a.id === timelineAccountId);
+      if (found) return found;
+    }
+    if (selectedIds.length > 0) {
+      const found = accounts.find((a) => a.id === selectedIds[0]);
+      if (found) return found;
+    }
+    return timelineAccountsPool[0] || null;
+  }, [timelineAccountId, selectedIds, timelineAccountsPool, accounts]);
 
   const isCreate = Boolean(
     isCreatePage ||
@@ -1091,27 +1422,15 @@ export default function Accounts({ isCreatePage = false }) {
       <CreateAccount
         onCancel={() => {
           setCreateViewOpen(false);
-          if (searchParams.get('create') || searchParams.get('mode')) {
-            const next = new URLSearchParams(searchParams);
-            next.delete('create');
-            next.delete('mode');
-            setSearchParams(next);
-          } else if (location.pathname.endsWith('/create') || location.pathname.endsWith('/new')) {
-            navigate('/accounts');
-          }
+          navigate('/accounts');
         }}
-        onSuccess={(created) => {
+        onSuccess={(createdOrId) => {
           setCreateViewOpen(false);
-          if (searchParams.get('create') || searchParams.get('mode')) {
-            const next = new URLSearchParams(searchParams);
-            next.delete('create');
-            next.delete('mode');
-            setSearchParams(next);
-          } else if (location.pathname.endsWith('/create') || location.pathname.endsWith('/new')) {
+          const newId = typeof createdOrId === 'string' ? createdOrId : createdOrId?.id;
+          if (newId) {
+            openAccountDetail(newId);
+          } else {
             navigate('/accounts');
-          }
-          if (created?.id) {
-            openAccountDetail(created.id);
           }
         }}
       />
@@ -1127,6 +1446,7 @@ export default function Accounts({ isCreatePage = false }) {
         onSelectAccount={openAccountDetail}
         activeUser={activeUser}
         enforcePermissions={enforcePermissions}
+        initialTab={detailTab}
       />
     );
   }
@@ -1194,7 +1514,7 @@ export default function Accounts({ isCreatePage = false }) {
           ],
           sort: table.sort,
           onSort: table.setSort,
-          layouts: ['list', 'kanban', 'grid', 'chart'],
+          layouts: ['list', 'spreadsheet', 'kanban', 'grid', 'chart'],
           layout,
           onLayout: setLayout,
           onRefresh: refresh,
@@ -1209,6 +1529,7 @@ export default function Accounts({ isCreatePage = false }) {
             onClick: () => navigate('/accounts/create'),
             menu: [
               { label: 'Create Account', icon: Plus, onClick: () => navigate('/accounts/create') },
+              { label: 'Import Accounts (CSV)', icon: Upload, testId: 'import-accounts-csv-menu-item', onClick: () => setCsvImportOpen(true) },
               { label: 'Convert Lead to Account', icon: Sparkles, onClick: () => setLeadConvertModal(true) },
               { divider: true },
               { label: 'Export filtered accounts (CSV)', icon: Download, onClick: () => exportRows(table.sorted) },
@@ -1252,8 +1573,8 @@ export default function Accounts({ isCreatePage = false }) {
 
       {/* 4. Search and ownership row */}
       <div className="card px-3 py-2 mb-2.5 flex flex-wrap items-center justify-between gap-2.5 text-[12.5px] bg-white border border-[#E2E8F0] rounded-lg shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
-        <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[240px]">
-          <div className="relative w-full sm:w-[260px]">
+        <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[200px]">
+          <div className="relative w-full sm:w-[280px]">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-400 pointer-events-none" />
             <input
               type="search"
@@ -1280,104 +1601,10 @@ export default function Accounts({ isCreatePage = false }) {
               </button>
             )}
           </div>
-
-          {/* Compact Filter Dropdown Beside Search Input */}
-          <Dropdown
-            align="left"
-            width={240}
-            trigger={
-              <button
-                type="button"
-                data-testid="compact-accounts-filter-dropdown"
-                className={`h-8 px-2.5 rounded-lg border text-[12.5px] font-medium inline-flex items-center gap-1.5 transition-colors ${
-                  activeFilterCount > 0
-                    ? 'border-[#1F6FEB] bg-[#EFF6FF] text-[#1F6FEB]'
-                    : 'border-[#CBD5E1] bg-white hover:bg-[#F8FAFC] text-[#475569]'
-                }`}
-              >
-                <SlidersHorizontal size={13} className="text-[#1F6FEB]" />
-                <span>Filter</span>
-                {activeFilterCount > 0 && (
-                  <span className="px-1.5 py-0.2 rounded-full bg-[#1F6FEB] text-white text-[10.5px] font-semibold">
-                    {activeFilterCount}
-                  </span>
-                )}
-                <ChevronDown size={13} className="text-[#64748B]" />
-              </button>
-            }
-          >
-            {(close) => (
-              <>
-                <MenuLabel>Quick Filter Options</MenuLabel>
-                <MenuItem
-                  icon={Filter}
-                  onClick={() => {
-                    setFiltersOpen((o) => !o);
-                    close();
-                  }}
-                >
-                  {filtersOpen ? 'Hide Filter Panel' : 'Show Filter Panel'}
-                </MenuItem>
-                <MenuItem
-                  icon={SlidersHorizontal}
-                  onClick={() => {
-                    setBuilderOpen(true);
-                    close();
-                  }}
-                >
-                  Advanced Condition Builder
-                </MenuItem>
-                <MenuDivider />
-                <MenuLabel>Filter Categories</MenuLabel>
-                <MenuItem
-                  onClick={() => {
-                    setFiltersOpen(true);
-                    setSysOpen(true);
-                    close();
-                  }}
-                >
-                  System Defined Filters ({ACCOUNT_SYSTEM_DEFINED_FILTERS.length})
-                </MenuItem>
-                <MenuItem
-                  onClick={() => {
-                    setFiltersOpen(true);
-                    setFieldsOpen(true);
-                    close();
-                  }}
-                >
-                  Filter By Fields ({ACCOUNT_FIELD_FILTERS.length})
-                </MenuItem>
-                <MenuItem
-                  onClick={() => {
-                    setFiltersOpen(true);
-                    setRelatedOpen(true);
-                    close();
-                  }}
-                >
-                  Related Modules ({ACCOUNT_RELATED_MODULE_FILTERS.length})
-                </MenuItem>
-                {activeFilterCount > 0 && (
-                  <>
-                    <MenuDivider />
-                    <MenuItem
-                      icon={RotateCcw}
-                      danger
-                      onClick={() => {
-                        clearAllFilters();
-                        close();
-                      }}
-                    >
-                      Clear All Active Filters ({activeFilterCount})
-                    </MenuItem>
-                  </>
-                )}
-              </>
-            )}
-          </Dropdown>
         </div>
 
         {/* Right side: Security Shield, Account Owner Selector, Strict Owner Access Checkbox */}
-        <div className="flex items-center gap-2.5 ml-auto">
+        <div className="flex flex-wrap items-center gap-2.5 sm:ml-auto">
           <div className="flex items-center gap-1.5 text-[12px] text-ink-600">
             <Shield size={13.5} className="text-[#1F6FEB]" />
             <select
@@ -2103,12 +2330,32 @@ export default function Accounts({ isCreatePage = false }) {
                         Reset Filters
                       </button>
                     )}
-                    <button className="btn-primary h-8 text-[12.5px]" onClick={openCreateAccountModal}>
+                     <button className="btn-primary h-8 text-[12.5px]" onClick={openCreateAccountModal}>
                       <Plus size={14} />
                       Create Account
                     </button>
                   </div>
                 }
+              />
+            )}
+
+            {/* View 1B: Excel-Style Editable Spreadsheet View */}
+            {layout === 'spreadsheet' && (
+              <SpreadsheetView
+                moduleType="accounts"
+                columns={spreadsheetColumns}
+                rows={table.pageRows}
+                table={table}
+                totalFilteredCount={filteredAccounts.length}
+                dense={dense}
+                onSaveCell={handleSpreadsheetSaveAccountCell}
+                onAddRow={handleSpreadsheetAddAccount}
+                onDeleteRows={(ids, label) =>
+                  setConfirm({ ids, label: label || `${ids.length} account(s)` })
+                }
+                onOpenDetail={(id) => openAccountDetail(id)}
+                onOpenImportCSV={() => setCsvImportOpen(true)}
+                onExportCSV={() => exportRows(table.sorted)}
               />
             )}
 
@@ -2290,6 +2537,70 @@ export default function Accounts({ isCreatePage = false }) {
                   }
                   valueLabel={chartDimension === 'revenue' ? '₹ Cr' : 'Accounts'}
                 />
+              </div>
+            )}
+
+            {layout === 'timeline' && (
+              <div className="p-3 sm:p-4 bg-[#F3F6FB] space-y-3" data-testid="accounts-timeline-layout">
+                {/* Account Record Selector Header for Timeline View */}
+                <div className="bg-white rounded-md border border-[#DCE3EE] p-3 sm:p-3.5 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    {selectedTimelineAccount && (
+                      <AccountLogo name={selectedTimelineAccount.name} color={selectedTimelineAccount.color} size={38} />
+                    )}
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-[#1262E0] bg-[#EFF6FF] border border-[#BFDBFE] px-2 py-0.5 rounded">
+                          Selected Account
+                        </span>
+                        <span className="text-[14px] font-bold text-[#0F172A] truncate">
+                          {selectedTimelineAccount?.name || 'No Account Selected'}
+                        </span>
+                        {selectedTimelineAccount?.type && (
+                          <StatusBadge kind="accountType" value={selectedTimelineAccount.type} size="sm" />
+                        )}
+                      </div>
+                      {selectedTimelineAccount && (
+                        <div className="text-[12px] text-[#64748B] truncate mt-0.5">
+                          {selectedTimelineAccount.industry || 'Enterprise'} · Owner: {userName(selectedTimelineAccount.ownerId)} · {fmtINR(selectedTimelineAccount.annualRevenue || 0)}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    <label className="text-[12px] font-medium text-[#475569] hidden sm:inline" htmlFor="account-timeline-selector">
+                      Switch Account:
+                    </label>
+                    <select
+                      id="account-timeline-selector"
+                      data-testid="account-timeline-record-select"
+                      value={selectedTimelineAccount?.id || ''}
+                      onChange={(e) => setTimelineAccountId(e.target.value)}
+                      className="h-8 px-2.5 rounded border border-[#CBD5E1] bg-white text-[12.5px] font-medium text-[#0F172A] max-w-[240px] focus:outline-hidden focus:border-[#1262E0]"
+                    >
+                      {timelineAccountsPool.map((acc) => (
+                        <option key={acc.id} value={acc.id}>
+                          {acc.name} ({acc.industry || acc.type || 'Account'})
+                        </option>
+                      ))}
+                    </select>
+
+                    {selectedTimelineAccount && (
+                      <button
+                        type="button"
+                        data-testid="account-timeline-open-detail-btn"
+                        onClick={() => openAccountDetail(selectedTimelineAccount.id, 'timeline')}
+                        className="h-8 px-3 rounded bg-[#1262E0] hover:bg-[#0E4FB5] text-white text-[12px] font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Eye size={13} />
+                        <span>Open Account Timeline</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <RecordTimeline recordType="account" record={selectedTimelineAccount} />
               </div>
             )}
 
@@ -2995,6 +3306,15 @@ export default function Accounts({ isCreatePage = false }) {
           />
         )}
       </Drawer>
+
+      {/* ==================== CSV IMPORT MODAL (ACCOUNTS) ==================== */}
+      <CSVImportModal
+        open={csvImportOpen}
+        onClose={() => setCsvImportOpen(false)}
+        moduleType="accounts"
+        activeUser={activeUser}
+        onImportComplete={() => table.setPage(1)}
+      />
     </div>
   );
 }
@@ -4677,44 +4997,8 @@ function AccountDetailsContent({
 
       {/* TAB 5: Activity Timeline */}
       {detailTab === 'timeline' && (
-        <div className="space-y-3">
-          <SectionTitle>Activity Timeline & Audit Trail</SectionTitle>
-          <ul className="space-y-2 border-l-2 border-[#CBD5E1] pl-4 ml-2">
-            <li className="text-[12.5px]">
-              <div className="font-medium text-ink">Last Activity Recorded</div>
-              <div className="text-[11.5px] text-ink-500">{fmtDate(account.lastActivityTime || account.createdOn)}</div>
-            </li>
-            {relCalls.map((c) => (
-              <li key={c.id} className="text-[12.5px]">
-                <div className="font-medium text-ink">
-                  Call ({c.status}): {c.subject}
-                </div>
-                <div className="text-[11.5px] text-ink-500">{c.notes}</div>
-              </li>
-            ))}
-            {relDeals.map((d) => (
-              <li key={d.id} className="text-[12.5px]">
-                <div className="font-medium text-ink">
-                  Deal {d.stage}: {d.name} ({fmtINR(d.amount)})
-                </div>
-                <div className="text-[11.5px] text-ink-500">Created {fmtDate(d.createdOn)}</div>
-              </li>
-            ))}
-            {activity
-              .filter((act) => act.recordId === account.id)
-              .map((act) => (
-                <li key={act.id} className="text-[12.5px]">
-                  <div className="font-medium text-ink">{act.message}</div>
-                  <div className="text-[11.5px] text-ink-500">{fmtDate(act.createdAt)}</div>
-                </li>
-              ))}
-            <li className="text-[12.5px]">
-              <div className="font-medium text-ink">Account Created</div>
-              <div className="text-[11.5px] text-ink-500">
-                {fmtDate(account.createdTime || account.createdOn)} by {usersById[account.createdBy]?.name || 'Arun Kumar'}
-              </div>
-            </li>
-          </ul>
+        <div>
+          <RecordTimeline recordType="account" record={account} compact />
         </div>
       )}
     </div>

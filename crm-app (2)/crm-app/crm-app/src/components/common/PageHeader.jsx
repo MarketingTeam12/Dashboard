@@ -1,12 +1,13 @@
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowUpDown, BarChart3, Check, ChevronDown, Clock3, Columns3, Filter, LayoutGrid, List, MapPin, MoreHorizontal,
+  ArrowUpDown, BarChart3, Check, ChevronDown, Clock3, Columns3, FileSpreadsheet, Filter, LayoutGrid, List, MapPin, MoreHorizontal,
   PieChart, RotateCw, Rows3, Workflow,
 } from 'lucide-react';
 import Dropdown, { MenuDivider, MenuItem, MenuLabel } from './Dropdown';
 
 export const LAYOUTS = {
   list: { icon: List, label: 'List view' },
+  spreadsheet: { icon: FileSpreadsheet, label: 'Spreadsheet view' },
   kanban: { icon: Columns3, label: 'Kanban view' },
   grid: { icon: LayoutGrid, label: 'Grid view' },
   chart: { icon: PieChart, label: 'Chart view' },
@@ -54,9 +55,20 @@ const sq = 'h-10 flex items-center justify-center text-ink-600 hover:bg-page';
  */
 export function Toolbar({
   labeled, filterActive, onFilter, sortOptions = [], sort, onSort, layouts = ['list'], layout, onLayout,
-  onRefresh, refreshing, dense, onDense, module, primary, secondary, moreItems,
+  onRefresh, refreshing, dense, onDense, module, primary, secondary, moreItems, onWorkflowTimeline,
 }) {
   const navigate = useNavigate();
+  const hasInlineTimeline = Boolean(onWorkflowTimeline) || module === 'Accounts' || module === 'Contacts';
+  const isTimelineActive = layout === 'timeline';
+  const handleWorkflowButtonClick = () => {
+    if (onWorkflowTimeline) {
+      onWorkflowTimeline();
+    } else if (hasInlineTimeline && onLayout) {
+      onLayout('timeline');
+    } else {
+      navigate(`/workflows${module ? `?module=${encodeURIComponent(module)}` : ''}`);
+    }
+  };
   return (
     <div className="card px-2.5 py-2 flex flex-wrap items-center gap-2.5 mb-3">
       <button type="button" onClick={onFilter} aria-pressed={filterActive}
@@ -89,24 +101,54 @@ export function Toolbar({
       <div className="flex rounded-lg border border-line bg-white overflow-hidden divide-x divide-line">
         {layouts.map((k) => {
           const L = LAYOUTS[k];
+          if (!L) return null;
           const active = layout === k;
+          const isSheet = k === 'spreadsheet';
           return (
-            <button key={k} type="button" title={L.label} aria-label={L.label} aria-pressed={active} onClick={() => onLayout(k)}
-              className={`${sq} w-[50px] sm:w-[56px] ${active ? '!bg-primary-50 text-primary ring-1 ring-inset ring-primary' : ''}`}>
+            <button
+              key={k}
+              type="button"
+              data-testid={`layout-${k}-btn`}
+              title={L.label}
+              aria-label={L.label}
+              aria-pressed={active}
+              onClick={() => onLayout(k)}
+              className={`${sq} ${
+                isSheet ? 'px-2.5 sm:px-3 gap-1.5' : 'w-[50px] sm:w-[56px]'
+              } ${active ? '!bg-primary-50 text-primary ring-1 ring-inset ring-primary font-semibold' : ''}`}
+            >
               <L.icon size={19} />
+              {isSheet && <span className="hidden xl:inline text-[13px]">Spreadsheet</span>}
             </button>
           );
         })}
-        <button type="button" title="Workflow rules" aria-label="Workflow rules" onClick={() => navigate(`/workflows${module ? `?module=${encodeURIComponent(module)}` : ''}`)} className={`${sq} w-[50px] sm:w-[56px] hidden md:flex`}><Workflow size={19} /></button>
+        <button
+          type="button"
+          data-testid="toolbar-workflow-timeline-btn"
+          title={hasInlineTimeline ? 'Timeline view (Workflow & Activity)' : 'Workflow rules'}
+          aria-label={hasInlineTimeline ? 'Timeline view' : 'Workflow rules'}
+          aria-pressed={hasInlineTimeline ? isTimelineActive : undefined}
+          onClick={handleWorkflowButtonClick}
+          className={`${sq} w-[50px] sm:w-[56px] hidden md:flex ${hasInlineTimeline && isTimelineActive ? '!bg-primary-50 text-primary ring-1 ring-inset ring-primary' : ''}`}
+        >
+          <Workflow size={19} />
+        </button>
         <button type="button" title={dense ? 'Comfortable rows' : 'Compact rows'} aria-label="Row density" aria-pressed={!!dense} onClick={onDense} className={`${sq} w-[50px] sm:w-[56px] hidden md:flex ${dense ? 'text-primary' : ''}`}><Rows3 size={19} /></button>
         <Dropdown width={210} align="right" trigger={<button type="button" aria-label="All views" className={`${sq} w-[46px]`}><ChevronDown size={17} /></button>}>
           {(close) => (
             <>
               <MenuLabel>Views</MenuLabel>
-              {layouts.map((k) => <MenuItem key={k} close={close} icon={LAYOUTS[k].icon} active={layout === k} onClick={() => onLayout(k)}>{LAYOUTS[k].label}</MenuItem>)}
+              {layouts.map((k) => LAYOUTS[k] && <MenuItem key={k} testId={`menu-layout-${k}`} close={close} icon={LAYOUTS[k].icon} active={layout === k} onClick={() => onLayout(k)}>{LAYOUTS[k].label}</MenuItem>)}
+              {hasInlineTimeline && (
+                <MenuItem close={close} icon={Workflow} active={isTimelineActive} onClick={handleWorkflowButtonClick}>
+                  Timeline view
+                </MenuItem>
+              )}
               <MenuDivider />
               <MenuItem close={close} icon={Rows3} onClick={onDense}>{dense ? 'Comfortable rows' : 'Compact rows'}</MenuItem>
-              <MenuItem close={close} icon={Workflow} onClick={() => navigate(`/workflows${module ? `?module=${encodeURIComponent(module)}` : ''}`)}>Workflow rules</MenuItem>
+              {!hasInlineTimeline && (
+                <MenuItem close={close} icon={Workflow} onClick={handleWorkflowButtonClick}>Workflow rules</MenuItem>
+              )}
             </>
           )}
         </Dropdown>
@@ -126,7 +168,7 @@ export function Toolbar({
             {primary.icon && <primary.icon size={17} />}{primary.label}
           </button>
           {primary.menu && (
-            <Dropdown width={220} align="right" trigger={<button type="button" aria-label="More create options" className="h-10 w-10 bg-primary hover:bg-primary-600 text-white border-l border-white/30 flex items-center justify-center"><ChevronDown size={17} /></button>}>
+            <Dropdown width={240} align="right" trigger={<button type="button" data-testid="primary-create-menu-btn" aria-label="More create options" className="h-10 w-10 bg-primary hover:bg-primary-600 text-white border-l border-white/30 flex items-center justify-center"><ChevronDown size={17} /></button>}>
               {(close) => renderItems(primary.menu, close)}
             </Dropdown>
           )}

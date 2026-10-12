@@ -149,10 +149,13 @@ export default function Topbar({ onMenu }) {
   };
 
   const createItems = [
-    { label: 'Contact', icon: Users, path: '/contacts?create=1' }, { label: 'Account', icon: Building2, path: '/accounts?create=1' },
-    { label: 'Deal', icon: CircleDollarSign, path: '/deals?create=1' }, { label: 'Call log', icon: Phone, path: '/calls?create=1' },
-    { label: 'Forecast', icon: TrendingUp, path: '/forecasts?create=1' },
-    { label: 'Invoice', icon: Receipt, path: '/zoho-finance?create=1' }, { label: 'Workflow rule', icon: Workflow, path: '/workflows?create=1' },
+    { label: 'Contact', icon: Users, path: '/contacts/create', testId: 'quick-create-contact' },
+    { label: 'Account', icon: Building2, path: '/accounts/create', testId: 'quick-create-account' },
+    { label: 'Deal', icon: CircleDollarSign, path: '/deals?create=1', testId: 'quick-create-deal' },
+    { label: 'Call log', icon: Phone, path: '/calls?create=1', testId: 'quick-create-call' },
+    { label: 'Forecast', icon: TrendingUp, path: '/forecasts?create=1', testId: 'quick-create-forecast' },
+    { label: 'Invoice', icon: Receipt, path: '/zoho-finance?create=1', testId: 'quick-create-invoice' },
+    { label: 'Workflow rule', icon: Workflow, path: '/workflows?create=1', testId: 'quick-create-workflow' },
   ];
 
   return (
@@ -185,8 +188,8 @@ export default function Topbar({ onMenu }) {
       <div className="hidden md:block w-[230px] lg:w-[280px] xl:w-[282px] 2xl:w-[300px] ml-auto"><GlobalSearch /></div>
       <button className={`${iconBtn} md:hidden`} onClick={() => setSearchOpen(true)} aria-label="Search"><Search size={19} /></button>
 
-      <Dropdown width={210} align="right" trigger={<button className="h-[38px] w-[38px] rounded-lg bg-primary hover:bg-primary-600 text-white flex items-center justify-center ml-1" aria-label="Create"><Plus size={21} /></button>}>
-        {(close) => (<><MenuLabel>Create</MenuLabel>{createItems.map((c) => <MenuItem key={c.label} icon={c.icon} close={close} onClick={() => navigate(c.path)}>{c.label}</MenuItem>)}</>)}
+      <Dropdown width={210} align="right" trigger={<button type="button" data-testid="global-quick-create-btn" className="h-[38px] w-[38px] rounded-lg bg-primary hover:bg-primary-600 text-white flex items-center justify-center ml-1" aria-label="Create"><Plus size={21} /></button>}>
+        {(close) => (<><MenuLabel>Create</MenuLabel>{createItems.map((c) => <MenuItem key={c.label} testId={c.testId} icon={c.icon} close={close} onClick={() => navigate(c.path)}>{c.label}</MenuItem>)}</>)}
       </Dropdown>
       <button onClick={() => setAiOpen(true)} className="h-[38px] px-2.5 rounded-lg border border-line bg-white text-primary font-semibold text-[14px] flex items-center gap-1.5 hover:bg-primary-50" aria-label="CRM insights">
         <Sparkles size={18} /><span className="hidden sm:inline">AI</span>

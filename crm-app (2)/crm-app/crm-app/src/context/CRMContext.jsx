@@ -1,13 +1,97 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { buildSeed, SEED_VERSION, USERS } from '../data/seedData';
+import { buildSeed, SEED_VERSION, seedActivity, seedWorkflowHistory, seedWorkflows, USERS } from '../data/seedData';
 import { clearAll, loadKey, saveKey } from '../utils/storage';
-import { todayISO } from '../utils/calculations';
+import { fmtINR, todayISO } from '../utils/calculations';
 import { COLLECTION_MODULE, recordLabel, runWorkflows } from '../workflows/workflowEngine';
 import { useToast } from '../components/common/Toast';
 
 const KEYS = ['accounts', 'contacts', 'deals', 'calls', 'invoices', 'forecasts', 'myJobs', 'myJobsLogs', 'contactRelations', 'savedContactViews', 'accountRelations', 'savedAccountViews', 'oldDeals', 'baselines', 'workflows', 'notifications', 'tasks', 'activity', 'workflowHistory'];
 const PREFIX = { accounts: 'acc', contacts: 'con', deals: 'deal', calls: 'call', invoices: 'inv', forecasts: 'fc', myJobs: 'job' };
 const CAP = 500;
+
+const FIELD_LABELS = {
+  name: 'Name',
+  clientName: 'Client Name',
+  designation: 'Designation',
+  department: 'Department',
+  email: 'Email',
+  secondaryEmail: 'Secondary Email',
+  phone: 'Phone',
+  mobile: 'Mobile',
+  lifecycle: 'Lifecycle Stage',
+  leadSource: 'Lead Source',
+  ownerId: 'Owner',
+  accountId: 'Account',
+  contactId: 'Contact',
+  type: 'Type',
+  industry: 'Industry',
+  location: 'Location',
+  billingCity: 'Billing City',
+  shippingCity: 'Shipping City',
+  mailingCity: 'Mailing City',
+  annualRevenue: 'Annual Revenue',
+  employees: 'Employees',
+  ownership: 'Ownership',
+  rating: 'Rating',
+  status: 'Status',
+  stage: 'Stage',
+  amount: 'Amount',
+  probability: 'Probability (%)',
+  closingDate: 'Closing Date',
+  followUp: 'Follow-Up Date',
+  emailSentiment: 'Email Sentiment',
+  website: 'Website',
+  gstin: 'GSTIN',
+  description: 'Description',
+  tag: 'Tags',
+  subject: 'Subject',
+  duration: 'Duration (sec)',
+  paidAmount: 'Paid Amount',
+  dueDate: 'Due Date',
+};
+
+const IGNORED_DIFF_KEYS = new Set([
+  'id', 'touched', 'modifiedTime', 'updatedAt', 'modifiedBy', 'createdBy',
+  'createdOn', 'createdTime', 'lastActivityTime', 'hasRecordAction', 'tagInput',
+  'color', 'billingAddress', 'shippingAddress', 'mailingAddress', 'otherAddress',
+  'tags', 'contactName', 'accountName', 'contactOwner', 'emailId', 'gstNumber',
+  'payments',
+]);
+
+function formatDiffVal(key, val) {
+  if (val === undefined || val === null || val === '') return '—';
+  if (['annualRevenue', 'amount', 'paidAmount'].includes(key) && !isNaN(Number(val))) {
+    return fmtINR(Number(val));
+  }
+  if (key === 'ownerId') {
+    return USERS.find((u) => u.id === val)?.name || String(val);
+  }
+  if (Array.isArray(val)) return val.join(', ') || '—';
+  return String(val);
+}
+
+function computeFieldChanges(prev, next) {
+  if (!prev || !next) return [];
+  const changes = [];
+  const allKeys = new Set([...Object.keys(prev), ...Object.keys(next)]);
+  allKeys.forEach((key) => {
+    if (IGNORED_DIFF_KEYS.has(key)) return;
+    const oldVal = prev[key];
+    const newVal = next[key];
+    if (typeof oldVal === 'object' || typeof newVal === 'object') return;
+    const sOld = oldVal == null ? '' : String(oldVal).trim();
+    const sNew = newVal == null ? '' : String(newVal).trim();
+    if (sOld !== sNew) {
+      changes.push({
+        field: key,
+        label: FIELD_LABELS[key] || key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase()),
+        from: formatDiffVal(key, oldVal),
+        to: formatDiffVal(key, newVal),
+      });
+    }
+  });
+  return changes;
+}
 
 function freshSeed() {
   const seed = buildSeed();
@@ -32,6 +116,25 @@ function loadAll() {
   if (missing) {
     const fresh = freshSeed();
     KEYS.forEach((k) => { if (seed[k] === undefined) seed[k] = fresh[k]; });
+  }
+  // Ensure default Account & Contact workflows and seeded timeline entries exist even if localStorage was initialized earlier
+  const defaultWfs = seedWorkflows();
+  const existingWfIds = new Set((seed.workflows || []).map((w) => w.id));
+  const missingWfs = defaultWfs.filter((w) => !existingWfIds.has(w.id));
+  if (missingWfs.length > 0) {
+    seed.workflows = [...(seed.workflows || []), ...missingWfs];
+  }
+  const defaultHist = seedWorkflowHistory();
+  const existingHistIds = new Set((seed.workflowHistory || []).map((h) => h.id));
+  const missingHist = defaultHist.filter((h) => !existingHistIds.has(h.id));
+  if (missingHist.length > 0) {
+    seed.workflowHistory = [...(seed.workflowHistory || []), ...missingHist];
+  }
+  const defaultAct = seedActivity();
+  const existingActIds = new Set((seed.activity || []).map((a) => a.id));
+  const missingAct = defaultAct.filter((a) => !existingActIds.has(a.id));
+  if (missingAct.length > 0) {
+    seed.activity = [...(seed.activity || []), ...missingAct];
   }
   return seed;
 }
@@ -79,17 +182,47 @@ export function CRMProvider({ children }) {
     };
   };
 
-  const userLog = (col, verb, record) => ({
-    id: `log-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, module: COLLECTION_MODULE[col],
-    recordId: record.id, recordLabel: recordLabel(record), message: `${COLLECTION_MODULE[col]} record "${recordLabel(record)}" ${verb}.`,
-    createdAt: new Date().toISOString(), source: 'user',
-  });
+  const userLog = (col, verb, record, prev = null) => {
+    const module = COLLECTION_MODULE[col];
+    const label = recordLabel(record);
+    const accountId = col === 'accounts' ? record.id : (record.accountId || '');
+    const contactId = col === 'contacts' ? record.id : (record.contactId || '');
+    const userId = record.modifiedBy || record.createdBy || record.ownerId || 'u1';
+    const changes = verb === 'updated' ? computeFieldChanges(prev, record) : [];
+    const changeSummary = changes.length > 0
+      ? `Updated ${changes.slice(0, 3).map((c) => `${c.label}: ${c.from} → ${c.to}`).join('; ')}${changes.length > 3 ? ` (+${changes.length - 3} more)` : ''}.`
+      : `${module} record "${label}" ${verb}.`;
+    return {
+      id: `log-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`,
+      module,
+      eventType: verb,
+      recordId: record.id,
+      recordLabel: label,
+      accountId,
+      contactId,
+      userId,
+      title: verb === 'created'
+        ? `${module} Record Created — ${label}`
+        : verb === 'updated'
+          ? `${module} Record Updated — ${label}`
+          : `${module} Record Deleted — ${label}`,
+      message: changeSummary,
+      changes,
+      createdAt: new Date().toISOString(),
+      source: 'user',
+    };
+  };
 
   const createRecord = useCallback((col, data) => {
-    let record = { ...data, id: newId(col), createdOn: data.createdOn || todayISO() };
+    const nowIso = new Date().toISOString();
+    let record = { ...data, id: newId(col), createdOn: data.createdOn || todayISO(), createdAt: data.createdAt || nowIso };
     const res = applyEvent(col, 'created', record, null);
     record = { ...record, ...res.patch };
-    setDb((d) => ({ ...d, [col]: [record, ...d[col]], ...mergeEffects(d, res, [userLog(col, 'created', record)]) }));
+    setDb((d) => {
+      const nextState = { ...d, [col]: [record, ...d[col]], ...mergeEffects(d, res, [userLog(col, 'created', record)]) };
+      dbRef.current = nextState;
+      return nextState;
+    });
     return record;
   }, [applyEvent]);
 
@@ -100,7 +233,7 @@ export function CRMProvider({ children }) {
     const res = applyEvent(col, 'updated', next, prev);
     next = { ...next, ...res.patch };
     setDb((d) => {
-      const nextState = { ...d, [col]: d[col].map((r) => (r.id === id ? next : r)), ...mergeEffects(d, res, [userLog(col, 'updated', next)]) };
+      const nextState = { ...d, [col]: d[col].map((r) => (r.id === id ? next : r)), ...mergeEffects(d, res, [userLog(col, 'updated', next, prev)]) };
       // When a Deal becomes Closed Won, ensure the resulting Project retains the Account relationship
       if (col === 'deals' && next.stage === 'Closed Won' && next.accountId) {
         const rel = d.accountRelations || {};
@@ -116,10 +249,12 @@ export function CRMProvider({ children }) {
             ownerId: next.ownerId,
             createdDate: todayISO(),
             updatedDate: todayISO(),
+            createdAt: new Date().toISOString(),
           };
           nextState.accountRelations = { ...rel, projects: [newProj, ...projects] };
         }
       }
+      dbRef.current = nextState;
       return nextState;
     });
     return next;
@@ -167,7 +302,30 @@ export function CRMProvider({ children }) {
   const markNotification = useCallback((id) => setDb((d) => ({ ...d, notifications: d.notifications.map((n) => (n.id === id ? { ...n, read: true } : n)) })), []);
   const markAllRead = useCallback(() => setDb((d) => ({ ...d, notifications: d.notifications.map((n) => ({ ...n, read: true })) })), []);
   const clearNotifications = useCallback(() => setDb((d) => ({ ...d, notifications: [] })), []);
-  const updateTask = useCallback((id, patch) => setDb((d) => ({ ...d, tasks: d.tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)) })), []);
+  const updateTask = useCallback((id, patch) => {
+    setDb((d) => {
+      const target = (d.tasks || []).find((t) => t.id === id);
+      const nextTasks = (d.tasks || []).map((t) => (t.id === id ? { ...t, ...patch, updatedAt: new Date().toISOString() } : t));
+      if (!target) return { ...d, tasks: nextTasks };
+      const updated = { ...target, ...patch };
+      const statusText = updated.completed || updated.status === 'Completed' ? 'Completed' : (updated.status || 'Updated');
+      const logEntry = {
+        id: `log-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`,
+        module: 'Tasks',
+        eventType: 'task_updated',
+        recordId: updated.id,
+        recordLabel: updated.title || 'Task',
+        accountId: updated.accountId || (updated.module === 'Accounts' ? updated.recordId : ''),
+        contactId: updated.contactId || (updated.module === 'Contacts' ? updated.recordId : ''),
+        userId: updated.ownerId || 'u1',
+        title: `Task ${statusText} — ${updated.title || 'Task'}`,
+        message: `Task "${updated.title || 'Task'}" marked as ${statusText}.`,
+        createdAt: new Date().toISOString(),
+        source: 'user',
+      };
+      return { ...d, tasks: nextTasks, activity: [logEntry, ...(d.activity || [])].slice(0, CAP) };
+    });
+  }, []);
   const deleteTask = useCallback((id) => setDb((d) => ({ ...d, tasks: d.tasks.filter((t) => t.id !== id) })), []);
 
   // ---- My Jobs atomic action ----
@@ -198,12 +356,27 @@ export function CRMProvider({ children }) {
       timestamp: now,
       comment: comment || '',
     };
+    const targetRecord = prevJob.collection && Array.isArray(dbRef.current[prevJob.collection])
+      ? dbRef.current[prevJob.collection].find((r) => r.id === prevJob.recordId)
+      : null;
+    const resolvedAccountId = prevJob.collection === 'accounts'
+      ? prevJob.recordId
+      : (targetRecord?.accountId || '');
+    const resolvedContactId = prevJob.collection === 'contacts'
+      ? prevJob.recordId
+      : (targetRecord?.contactId || '');
+
     const activityEntry = {
       id: `log-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`,
       module: 'My Jobs',
+      eventType: 'my_job_action',
       recordId: prevJob.recordId,
       recordLabel: prevJob.recordName,
-      message: `${prevJob.category}: "${prevJob.recordName}" — ${actionLabel}.`,
+      accountId: resolvedAccountId,
+      contactId: resolvedContactId,
+      userId: userId || 'u1',
+      title: `${prevJob.category}: ${actionLabel}`,
+      message: `${prevJob.category}: "${prevJob.recordName}" — ${actionLabel}${comment ? ` (${comment})` : ''}.`,
       createdAt: now,
       source: 'user',
     };
@@ -256,16 +429,23 @@ export function CRMProvider({ children }) {
 
   const addContactRelatedRecord = useCallback((moduleKey, item) => {
     const now = todayISO();
+    const nowIso = new Date().toISOString();
+    const parentContact = dbRef.current.contacts?.find((c) => c.id === item?.contactId);
     const record = {
       id: `${moduleKey}-${Date.now().toString(36)}`,
       createdDate: now,
       updatedDate: now,
+      createdAt: nowIso,
+      accountId: item?.accountId || parentContact?.accountId || '',
       ...item,
     };
     setDb((d) => {
       const rel = d.contactRelations || {};
       return {
         ...d,
+        contacts: item?.contactId
+          ? d.contacts.map((c) => (c.id === item.contactId ? { ...c, touched: true, lastActivityTime: now } : c))
+          : d.contacts,
         contactRelations: {
           ...rel,
           [moduleKey]: [record, ...(rel[moduleKey] || [])],
@@ -306,16 +486,21 @@ export function CRMProvider({ children }) {
 
   const addAccountRelatedRecord = useCallback((moduleKey, item) => {
     const now = todayISO();
+    const nowIso = new Date().toISOString();
     const record = {
       id: `a${moduleKey}-${Date.now().toString(36)}`,
       createdDate: now,
       updatedDate: now,
+      createdAt: nowIso,
       ...item,
     };
     setDb((d) => {
       const rel = d.accountRelations || {};
       return {
         ...d,
+        accounts: item?.accountId
+          ? d.accounts.map((a) => (a.id === item.accountId ? { ...a, touched: true, lastActivityTime: now } : a))
+          : d.accounts,
         accountRelations: {
           ...rel,
           [moduleKey]: [record, ...(rel[moduleKey] || [])],
@@ -326,11 +511,28 @@ export function CRMProvider({ children }) {
   }, []);
 
   /**
+   * Manually evaluate and run active workflows for a specific Account or Contact record
+   */
+  const runRecordWorkflowsNow = useCallback((col, id, eventType = 'updated') => {
+    const record = dbRef.current[col]?.find((r) => r.id === id);
+    if (!record) return null;
+    const res = applyEvent(col, eventType, record, record);
+    const next = { ...record, ...res.patch, touched: true, lastActivityTime: todayISO() };
+    setDb((d) => ({
+      ...d,
+      [col]: d[col].map((r) => (r.id === id ? next : r)),
+      ...mergeEffects(d, res, []),
+    }));
+    return res;
+  }, [applyEvent]);
+
+  /**
    * Convert a Lead into an Account (reusing existing Account if company/website matches to prevent duplicates),
    * a linked Contact, an optional Deal, and a Converted Lead record.
    */
   const convertLeadToAccount = useCallback(({ companyName, contactName, email, phone, leadSource = 'Website', industry = 'Information Technology', city = 'Chennai', annualRevenue = 2500000, ownerId = 'u1', dealName = '', dealAmount = 0 }) => {
     const now = todayISO();
+    const nowIso = new Date().toISOString();
     const cleanCompany = String(companyName || '').trim();
     const existingAcc = dbRef.current.accounts.find(
       (a) => a.name.trim().toLowerCase() === cleanCompany.toLowerCase()
@@ -358,6 +560,7 @@ export function CRMProvider({ children }) {
       modifiedBy: ownerId,
       createdOn: now,
       createdTime: now,
+      createdAt: nowIso,
       modifiedTime: now,
       lastActivityTime: now,
       website: `www.${cleanCompany.toLowerCase().replace(/[^a-z0-9]/g, '')}.in`,
@@ -385,6 +588,7 @@ export function CRMProvider({ children }) {
       mailingCountry: 'India',
       createdOn: now,
       createdTime: now,
+      createdAt: nowIso,
       lastContacted: now,
       touched: true,
     };
@@ -400,6 +604,7 @@ export function CRMProvider({ children }) {
       ownerId,
       createdDate: now,
       updatedDate: now,
+      createdAt: nowIso,
     };
 
     let deal = null;
@@ -415,6 +620,7 @@ export function CRMProvider({ children }) {
         probability: 25,
         ownerId,
         createdOn: now,
+        createdAt: nowIso,
         source: leadSource,
         department: 'Enterprise Sales',
         forecastCategory: 'Pipeline',
@@ -452,13 +658,13 @@ export function CRMProvider({ children }) {
     accountName: (id) => lookups.accountsById[id]?.name || '—',
     contactName: (id) => lookups.contactsById[id]?.name || '—',
     createRecord, updateRecord, deleteRecord, deleteRecords,
-    saveWorkflow, deleteWorkflow, toggleWorkflow,
+    saveWorkflow, deleteWorkflow, toggleWorkflow, runRecordWorkflowsNow,
     markNotification, markAllRead, clearNotifications, updateTask, deleteTask,
     processMyJobAction,
     saveContactView, renameContactView, deleteContactView, addContactRelatedRecord,
     saveAccountView, renameAccountView, deleteAccountView, addAccountRelatedRecord, convertLeadToAccount,
     resetDemo, reload,
-  }), [db, lookups, createRecord, updateRecord, deleteRecord, deleteRecords, saveWorkflow, deleteWorkflow, toggleWorkflow, markNotification, markAllRead, clearNotifications, updateTask, deleteTask, processMyJobAction, saveContactView, renameContactView, deleteContactView, addContactRelatedRecord, saveAccountView, renameAccountView, deleteAccountView, addAccountRelatedRecord, convertLeadToAccount, resetDemo, reload]);
+  }), [db, lookups, createRecord, updateRecord, deleteRecord, deleteRecords, saveWorkflow, deleteWorkflow, toggleWorkflow, runRecordWorkflowsNow, markNotification, markAllRead, clearNotifications, updateTask, deleteTask, processMyJobAction, saveContactView, renameContactView, deleteContactView, addContactRelatedRecord, saveAccountView, renameAccountView, deleteAccountView, addAccountRelatedRecord, convertLeadToAccount, resetDemo, reload]);
 
   return <CRMContext.Provider value={value}>{children}</CRMContext.Provider>;
 }

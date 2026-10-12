@@ -1,11 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Building2, Calendar, CheckCircle2, ChevronDown, ChevronLeft,
   ChevronRight, Clock, Copy, ExternalLink, FileText, GitBranch, Globe,
   History, Link as LinkIcon, Lock, Mail, MapPin, MessageCircle, MessageSquare,
   MoreHorizontal, Paperclip, Pencil, Phone, Plus, Printer, Send, ShieldCheck,
-  Sparkles, Tag, Trash2, Users, X,
+  Sparkles, Tag, Trash2, Users, Workflow, X,
 } from 'lucide-react';
 import { useCRM } from '../../context/CRMContext';
 import { useToast } from '../../components/common/Toast';
@@ -24,6 +24,7 @@ import {
   getRelatedRecordsForAccount,
   getSelectableParentAccounts,
 } from '../../utils/accountsFilterEngine';
+import RecordTimeline from '../../components/common/RecordTimeline';
 
 export const ACCOUNT_RELATED_LIST_ITEMS = [
   { key: 'notes', label: 'Notes' },
@@ -47,6 +48,7 @@ export const ACCOUNT_RELATED_LIST_ITEMS = [
   { key: 'memberAccounts', label: 'Member Accounts' },
   { key: 'zohoSignDocuments', label: 'Zoho Sign Documents' },
   { key: 'zohoSurvey', label: 'Zoho Survey' },
+  { key: 'workflowRules', label: 'Workflow Rules' },
 ];
 
 const INDIAN_GST_STATES = [
@@ -98,6 +100,7 @@ export default function AccountDetail({
   onSelectAccount,
   activeUser,
   enforcePermissions = false,
+  initialTab = 'overview',
 }) {
   const navigate = useNavigate();
   const toast = useToast();
@@ -122,10 +125,16 @@ export default function AccountDetail({
     updateTask,
   } = useCRM();
 
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'timeline'
+  const [activeTab, setActiveTab] = useState(initialTab === 'timeline' ? 'timeline' : 'overview'); // 'overview' | 'timeline'
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [detailsExpanded, setDetailsExpanded] = useState(true);
   const [activeRelatedKey, setActiveRelatedKey] = useState('notes');
+
+  useEffect(() => {
+    if (initialTab === 'timeline' || initialTab === 'overview') {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
 
   // Notes state
   const [noteInput, setNoteInput] = useState('');
@@ -573,6 +582,21 @@ export default function AccountDetail({
             className="h-8 px-3.5 rounded border border-[#CBD5E1] bg-white hover:bg-[#F8FAFC] text-[#1E293B] text-[12.5px] font-medium inline-flex items-center gap-1.5 transition-colors"
           >
             <span>Edit</span>
+          </button>
+
+          <button
+            type="button"
+            data-testid="account-detail-workflow-timeline-btn"
+            title="View chronological Workflow & Activity Timeline"
+            onClick={() => setActiveTab((prev) => (prev === 'timeline' ? 'overview' : 'timeline'))}
+            className={`h-8 px-3 rounded border text-[12.5px] font-medium inline-flex items-center gap-1.5 transition-colors ${
+              activeTab === 'timeline'
+                ? 'border-[#1262E0] bg-[#EFF6FF] text-[#1262E0] font-semibold'
+                : 'border-[#CBD5E1] bg-white hover:bg-[#F8FAFC] text-[#1E293B]'
+            }`}
+          >
+            <Workflow size={14} className={activeTab === 'timeline' ? 'text-[#1262E0]' : 'text-[#6D28D9]'} />
+            <span>Timeline</span>
           </button>
 
           {/* WhatsApp Chat Button + Dropdown (Matches Screenshot 1) */}
@@ -2698,123 +2722,20 @@ export default function AccountDetail({
                   )}
                 </div>
               </div>
+              {/* 22. WORKFLOW RULES — CHRONOLOGICAL TIMELINE VIEW */}
+              <div
+                id="account-related-section-workflowRules"
+                className="scroll-mt-28"
+              >
+                <RecordTimeline recordType="account" record={account} />
+              </div>
             </div>
           ) : (
             /* =============================================================== */
             /* TAB 2: TIMELINE                                                 */
             /* =============================================================== */
-            <div className="p-4 max-w-[1100px] space-y-4">
-              <div className="bg-white rounded-md border border-[#DCE3EE] p-5 shadow-2xs">
-                <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3 mb-4">
-                  <div className="flex items-center gap-2">
-                    <History size={16} className="text-[#1262E0]" />
-                    <h2 className="text-[14px] font-bold text-[#0F172A]">
-                      Account Activity & Audit Timeline — {account.name}
-                    </h2>
-                  </div>
-                  <span className="text-[12px] text-[#64748B]">
-                    Showing chronological history for ID <code className="font-mono text-[#0F172A]">{account.id}</code>
-                  </span>
-                </div>
-
-                <ol className="relative border-l-2 border-[#E2E8F0] ml-3 space-y-5 py-1">
-                  {/* Account Created Event */}
-                  <li className="ml-5">
-                    <span className="absolute -left-[7px] w-3 h-3 rounded-full bg-[#1262E0] ring-4 ring-white" />
-                    <div className="text-[12.5px] font-semibold text-[#0F172A]">
-                      Account Record Created
-                    </div>
-                    <div className="text-[11.5px] text-[#64748B]">
-                      By {userName(account.createdBy || account.ownerId)} · {fmtDate(account.createdTime || account.createdOn)}
-                    </div>
-                  </li>
-
-                  {/* Deals Events */}
-                  {relDeals.map((d) => (
-                    <li key={d.id} className="ml-5">
-                      <span className="absolute -left-[7px] w-3 h-3 rounded-full bg-[#10B981] ring-4 ring-white" />
-                      <div className="text-[12.5px] font-semibold text-[#0F172A]">
-                        Deal Associated:{' '}
-                        <Link to={`/deals?open=${d.id}`} className="text-[#1262E0] hover:underline">
-                          {d.name}
-                        </Link>{' '}
-                        ({fmtINR(d.amount)})
-                      </div>
-                      <div className="text-[11.5px] text-[#64748B]">
-                        Stage: {d.stage} · Closing {fmtDate(d.closingDate)}
-                      </div>
-                    </li>
-                  ))}
-
-                  {/* Contacts Events */}
-                  {relContacts.map((c) => (
-                    <li key={c.id} className="ml-5">
-                      <span className="absolute -left-[7px] w-3 h-3 rounded-full bg-[#3B82F6] ring-4 ring-white" />
-                      <div className="text-[12.5px] font-semibold text-[#0F172A]">
-                        Contact Linked:{' '}
-                        <Link to={`/contacts/${c.id}`} className="text-[#1262E0] hover:underline">
-                          {c.name}
-                        </Link>
-                      </div>
-                      <div className="text-[11.5px] text-[#64748B]">
-                        {c.designation || 'Contact'} · {c.email}
-                      </div>
-                    </li>
-                  ))}
-
-                  {/* Calls Events */}
-                  {relCalls.map((c) => (
-                    <li key={c.id} className="ml-5">
-                      <span className="absolute -left-[7px] w-3 h-3 rounded-full bg-[#6366F1] ring-4 ring-white" />
-                      <div className="text-[12.5px] font-semibold text-[#0F172A]">
-                        {c.type} Call:{' '}
-                        <Link to={`/calls?open=${c.id}`} className="text-[#1262E0] hover:underline">
-                          {c.subject}
-                        </Link>
-                      </div>
-                      <div className="text-[11.5px] text-[#64748B]">
-                        Status: {c.status} · {fmtDate(String(c.dateTime || '').slice(0, 10))}
-                      </div>
-                    </li>
-                  ))}
-
-                  {/* Emails Events */}
-                  {relEmails.map((em) => (
-                    <li key={em.id} className="ml-5">
-                      <span className="absolute -left-[7px] w-3 h-3 rounded-full bg-[#F59E0B] ring-4 ring-white" />
-                      <div className="text-[12.5px] font-semibold text-[#0F172A]">
-                        Email ({em.direction || 'Sent'}): {em.subject}
-                      </div>
-                      <div className="text-[11.5px] text-[#64748B]">
-                        Status: {em.status} · {fmtDate(em.createdDate)}
-                      </div>
-                    </li>
-                  ))}
-
-                  {/* Notes Events */}
-                  {relNotes.map((n) => (
-                    <li key={n.id} className="ml-5">
-                      <span className="absolute -left-[7px] w-3 h-3 rounded-full bg-[#8B5CF6] ring-4 ring-white" />
-                      <div className="text-[12.5px] font-semibold text-[#0F172A]">
-                        Note Added: {n.title || 'Note'}
-                      </div>
-                      <div className="text-[12px] text-[#334155] mt-0.5">{n.content}</div>
-                      <div className="text-[11px] text-[#64748B] mt-0.5">{fmtDate(n.createdDate)}</div>
-                    </li>
-                  ))}
-
-                  {/* Latest Modification Event */}
-                  <li className="ml-5">
-                    <span className="absolute -left-[7px] w-3 h-3 rounded-full bg-[#0EA5E9] ring-4 ring-white" />
-                    <div className="text-[12.5px] font-semibold text-[#0F172A]">
-                      Last Modified
-                    </div>
-                    <div className="text-[11.5px] text-[#64748B]">
-                      By {userName(account.modifiedBy || account.ownerId)} · {fmtDate(account.modifiedTime || account.lastActivityTime)}
-                    </div>
-                  </li>
-                </ol>
-              </div>
+            <div className="p-3 sm:p-4 max-w-[1150px]">
+              <RecordTimeline recordType="account" record={account} />
             </div>
           )}
         </div>

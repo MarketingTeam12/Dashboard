@@ -1,11 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Building2, Calendar, Check, CheckCircle2, ChevronDown, ChevronLeft,
   ChevronRight, Clock, Copy, Edit3, ExternalLink, FileText, FolderPlus, Globe,
   History, Link as LinkIcon, Mail, MessageSquare, MoreHorizontal, Paperclip,
   Pencil, Phone, Plus, Printer, Send, Share2, ShieldCheck, Sparkles, Tag,
-  Trash2, User, UserCheck, Users, X,
+  Trash2, User, UserCheck, Users, Workflow, X,
 } from 'lucide-react';
 import { useCRM } from '../../context/CRMContext';
 import { useToast } from '../../components/common/Toast';
@@ -15,6 +15,7 @@ import ConfirmDialog from '../../components/common/ConfirmDialog';
 import { LEAD_SOURCES, SALUTATIONS, VENDORS, DEPARTMENTS } from '../../data/seedData';
 import { fmtINR, fmtDate, todayISO, addDays } from '../../utils/calculations';
 import { getRelatedRecordsForContact } from '../../utils/contactsFilterEngine';
+import RecordTimeline from '../../components/common/RecordTimeline';
 
 export const CONTACT_RELATED_LIST_ITEMS = [
   { key: 'notes', label: 'Notes' },
@@ -35,6 +36,7 @@ export const CONTACT_RELATED_LIST_ITEMS = [
   { key: 'campaigns', label: 'Campaigns' },
   { key: 'social', label: 'Social' },
   { key: 'reportingContacts', label: 'Reporting Contacts' },
+  { key: 'workflowRules', label: 'Workflow Rules' },
 ];
 
 function FieldRow({ label, value }) {
@@ -55,6 +57,7 @@ export default function ContactDetail({
   contactsList = [],
   onBack,
   onSelectContact,
+  initialTab = 'overview',
 }) {
   const navigate = useNavigate();
   const toast = useToast();
@@ -79,10 +82,16 @@ export default function ContactDetail({
     updateTask,
   } = useCRM();
 
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'timeline'
+  const [activeTab, setActiveTab] = useState(initialTab === 'timeline' ? 'timeline' : 'overview'); // 'overview' | 'timeline'
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [detailsExpanded, setDetailsExpanded] = useState(true);
   const [activeRelatedKey, setActiveRelatedKey] = useState('notes');
+
+  useEffect(() => {
+    if (initialTab === 'timeline' || initialTab === 'overview') {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
 
   // Notes state
   const [noteInput, setNoteInput] = useState('');
@@ -509,6 +518,21 @@ export default function ContactDetail({
             <span>Edit</span>
           </button>
 
+          <button
+            type="button"
+            data-testid="contact-detail-workflow-timeline-btn"
+            title="View chronological Workflow & Activity Timeline"
+            onClick={() => setActiveTab((prev) => (prev === 'timeline' ? 'overview' : 'timeline'))}
+            className={`h-8 px-3 rounded border text-[12.5px] font-medium inline-flex items-center gap-1.5 transition-colors ${
+              activeTab === 'timeline'
+                ? 'border-[#1262E0] bg-[#EFF6FF] text-[#1262E0] font-semibold'
+                : 'border-[#CBD5E1] bg-white hover:bg-[#F8FAFC] text-[#1E293B]'
+            }`}
+          >
+            <Workflow size={14} className={activeTab === 'timeline' ? 'text-[#1262E0]' : 'text-[#6D28D9]'} />
+            <span>Timeline</span>
+          </button>
+
           {/* More Actions Menu (...) */}
           <div className="relative">
             <button
@@ -739,9 +763,10 @@ export default function ContactDetail({
                 <button
                   type="button"
                   role="tab"
+                  data-testid="contact-detail-tab-overview"
                   aria-selected={activeTab === 'overview'}
                   onClick={() => setActiveTab('overview')}
-                  className={`px-4 py-1 rounded-full text-[12px] transition-all ${
+                  className={`px-4 py-1 rounded-full text-[12px] transition-all cursor-pointer ${
                     activeTab === 'overview'
                       ? 'bg-white text-[#1262E0] font-semibold border border-[#1262E0] shadow-2xs'
                       : 'text-[#475569] hover:text-[#0F172A] font-medium'
@@ -752,9 +777,10 @@ export default function ContactDetail({
                 <button
                   type="button"
                   role="tab"
+                  data-testid="contact-detail-tab-timeline"
                   aria-selected={activeTab === 'timeline'}
                   onClick={() => setActiveTab('timeline')}
-                  className={`px-4 py-1 rounded-full text-[12px] transition-all ${
+                  className={`px-4 py-1 rounded-full text-[12px] transition-all cursor-pointer ${
                     activeTab === 'timeline'
                       ? 'bg-white text-[#1262E0] font-semibold border border-[#1262E0] shadow-2xs'
                       : 'text-[#475569] hover:text-[#0F172A] font-medium'
@@ -1836,6 +1862,14 @@ export default function ContactDetail({
                   )}
                 </div>
               </div>
+
+              {/* 4.19 WORKFLOW RULES — CHRONOLOGICAL TIMELINE VIEW */}
+              <div
+                id="related-section-workflowRules"
+                className="scroll-mt-28"
+              >
+                <RecordTimeline recordType="contact" record={contact} />
+              </div>
             </div>
           )}
 
@@ -1843,76 +1877,8 @@ export default function ContactDetail({
           {/* TAB 2: TIMELINE                                                 */}
           {/* =============================================================== */}
           {activeTab === 'timeline' && (
-            <div className="p-4 sm:p-6">
-              <div className="bg-white rounded-md border border-[#DCE3EE] p-5 shadow-2xs space-y-4">
-                <h2 className="text-[14px] font-bold text-[#0F172A]">
-                  Contact Activity & Audit Timeline
-                </h2>
-
-                <div className="relative pl-6 border-l-2 border-[#DCE3EE] space-y-4 text-[12.5px]">
-                  {/* Deals */}
-                  {relDeals.map((d) => (
-                    <div key={d.id} className="relative">
-                      <span className="absolute -left-[29px] top-1 h-3 w-3 rounded-full bg-[#1262E0] ring-4 ring-white" />
-                      <div className="p-3 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC]">
-                        <div className="font-semibold text-[#0F172A]">
-                          Deal Linked:{' '}
-                          <Link to={`/deals?open=${d.id}`} className="text-[#1262E0] hover:underline">
-                            {d.name}
-                          </Link>{' '}
-                          ({fmtINR(d.amount)})
-                        </div>
-                        <div className="text-[11.5px] text-[#64748B] mt-0.5">
-                          Stage: {d.stage} · Closing: {fmtDate(d.closingDate)} · Owner: {userName(d.ownerId)}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-
-                  {/* Calls */}
-                  {relCalls.map((c) => (
-                    <div key={c.id} className="relative">
-                      <span className="absolute -left-[29px] top-1 h-3 w-3 rounded-full bg-[#10B981] ring-4 ring-white" />
-                      <div className="p-3 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC]">
-                        <div className="font-semibold text-[#0F172A]">
-                          Call ({c.status}):{' '}
-                          <Link to={`/calls?open=${c.id}`} className="text-[#1262E0] hover:underline">
-                            {c.subject}
-                          </Link>
-                        </div>
-                        <div className="text-[11.5px] text-[#64748B] mt-0.5">
-                          {fmtDate(c.dateTime)} · {c.duration} mins · {c.notes}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-
-                  {/* Notes */}
-                  {relNotes.map((n) => (
-                    <div key={n.id} className="relative">
-                      <span className="absolute -left-[29px] top-1 h-3 w-3 rounded-full bg-[#F59E0B] ring-4 ring-white" />
-                      <div className="p-3 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC]">
-                        <div className="font-semibold text-[#0F172A]">Note Added: {n.title}</div>
-                        <div className="text-[#334155] mt-0.5">{n.content}</div>
-                      </div>
-                    </div>
-                  ))}
-
-                  {/* Record Created */}
-                  <div className="relative">
-                    <span className="absolute -left-[29px] top-1 h-3 w-3 rounded-full bg-[#64748B] ring-4 ring-white" />
-                    <div className="p-3 rounded-lg border border-[#E2E8F0] bg-white">
-                      <div className="font-semibold text-[#0F172A]">
-                        Contact Record Created for {contact.name}
-                      </div>
-                      <div className="text-[11.5px] text-[#64748B] mt-0.5">
-                        Created by {userName(contact.createdBy || contact.ownerId)} on{' '}
-                        {contact.createdTime || contact.createdOn || '2026-10-10'}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+            <div className="p-3 sm:p-4">
+              <RecordTimeline recordType="contact" record={contact} />
             </div>
           )}
         </div>

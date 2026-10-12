@@ -147,9 +147,13 @@ export default function CreateContact({ onCancel, onSuccess, initialRecord, isEd
     } else {
       const created = createRecord('contacts', {
         ...payload,
+        createdOn: todayISO(),
         createdTime: todayISO(),
+        lastContacted: todayISO(),
         createdBy: activeUser?.id || 'u1',
-        lifecycle: 'New',
+        designation: payload.designation || 'Executive',
+        lifecycle: payload.lifecycle || 'New',
+        vendorName: payload.vendorName || 'None',
       });
       toast.success(`Contact "${fullName}" created successfully`);
 
@@ -173,7 +177,7 @@ export default function CreateContact({ onCancel, onSuccess, initialRecord, isEd
   );
 
   return (
-    <div className="bg-[#F8FAFD] min-h-[calc(100vh-62px)] pb-12">
+    <div data-testid="create-contact-form" className="bg-[#F8FAFD] min-h-[calc(100vh-62px)] pb-12">
       {/* Top Header Row matching Screenshot 2 */}
       <div className="sticky top-[60px] z-20 bg-white border-b border-line px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
         <div className="flex items-center gap-2.5">
@@ -193,6 +197,7 @@ export default function CreateContact({ onCancel, onSuccess, initialRecord, isEd
         <div className="flex items-center gap-2">
           <button
             type="button"
+            data-testid="create-contact-cancel-btn"
             onClick={onCancel}
             className="h-8 px-3.5 rounded border border-line bg-white hover:bg-page text-[12.5px] font-medium text-ink-600 transition-colors"
           >
@@ -201,6 +206,7 @@ export default function CreateContact({ onCancel, onSuccess, initialRecord, isEd
           {!isEditMode && (
             <button
               type="button"
+              data-testid="create-contact-save-and-new-btn"
               onClick={() => handleSave(true)}
               className="h-8 px-3.5 rounded border border-line bg-white hover:bg-page text-[12.5px] font-medium text-ink-600 transition-colors"
             >
@@ -209,6 +215,7 @@ export default function CreateContact({ onCancel, onSuccess, initialRecord, isEd
           )}
           <button
             type="button"
+            data-testid="create-contact-save-btn"
             onClick={() => handleSave(false)}
             className="h-8 px-5 rounded bg-primary hover:bg-primary-600 text-white text-[12.5px] font-semibold transition-colors shadow-xs"
           >
