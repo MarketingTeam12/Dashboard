@@ -61,11 +61,12 @@ export default function Dropdown({ trigger, children, align = 'left', width = 22
   );
 }
 
-export function MenuItem({ icon: Icon, children, onClick, danger, active, close, disabled }) {
+export function MenuItem({ icon: Icon, children, onClick, danger, active, close, disabled, testId, 'data-testid': dataTestId }) {
   return (
     <button
       type="button"
       disabled={disabled}
+      data-testid={testId || dataTestId}
       onClick={() => { onClick?.(); close?.(); }}
       className={`w-full flex items-center gap-2.5 px-3 py-2 text-[13px] text-left hover:bg-page disabled:opacity-40 disabled:cursor-not-allowed ${danger ? 'text-danger-700' : 'text-ink'} ${active ? 'font-semibold text-primary' : ''}`}
     >

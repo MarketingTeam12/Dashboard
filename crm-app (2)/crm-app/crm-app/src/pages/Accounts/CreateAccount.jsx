@@ -179,8 +179,16 @@ export default function CreateAccount({ onCancel, onSuccess, initialRecord, isEd
     } else {
       const created = createRecord('accounts', {
         ...payload,
+        createdOn: todayISO(),
         createdTime: todayISO(),
+        lastActivityTime: todayISO(),
         createdBy: activeUser?.id || 'u1',
+        type: payload.type || 'Customer',
+        industry: payload.industry || 'Information Technology',
+        annualRevenue: Number(payload.annualRevenue || 25000000),
+        employees: Number(payload.employees || 120),
+        rating: payload.rating || 'Hot',
+        ownership: payload.ownership || 'Private',
         status: 'Active',
       });
       toast.success(`Account "${nameTrim}" created successfully`);
@@ -212,7 +220,7 @@ export default function CreateAccount({ onCancel, onSuccess, initialRecord, isEd
   );
 
   return (
-    <div className="bg-[#F8FAFD] min-h-[calc(100vh-62px)] pb-12">
+    <div data-testid="create-account-form" className="bg-[#F8FAFD] min-h-[calc(100vh-62px)] pb-12">
       {/* Top Header Row matching Screenshot 2 */}
       <div className="sticky top-[60px] z-20 bg-white border-b border-line px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
         <div className="flex items-center gap-2.5">
@@ -232,6 +240,7 @@ export default function CreateAccount({ onCancel, onSuccess, initialRecord, isEd
         <div className="flex items-center gap-2">
           <button
             type="button"
+            data-testid="create-account-cancel-btn"
             onClick={onCancel}
             className="h-8 px-3.5 rounded border border-line bg-white hover:bg-page text-[12.5px] font-medium text-ink-600 transition-colors"
           >
@@ -240,6 +249,7 @@ export default function CreateAccount({ onCancel, onSuccess, initialRecord, isEd
           {!isEditMode && (
             <button
               type="button"
+              data-testid="create-account-save-and-new-btn"
               onClick={() => handleSave(true)}
               className="h-8 px-3.5 rounded border border-line bg-white hover:bg-page text-[12.5px] font-medium text-ink-600 transition-colors"
             >
@@ -248,6 +258,7 @@ export default function CreateAccount({ onCancel, onSuccess, initialRecord, isEd
           )}
           <button
             type="button"
+            data-testid="create-account-save-btn"
             onClick={() => handleSave(false)}
             className="h-8 px-5 rounded bg-primary hover:bg-primary-600 text-white text-[12.5px] font-semibold transition-colors shadow-xs"
           >

@@ -1,11 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Building2, Calendar, CheckCircle2, ChevronDown, ChevronLeft,
   ChevronRight, Clock, Copy, ExternalLink, FileText, GitBranch, Globe,
   History, Link as LinkIcon, Lock, Mail, MapPin, MessageCircle, MessageSquare,
   MoreHorizontal, Paperclip, Pencil, Phone, Plus, Printer, Send, ShieldCheck,
-  Sparkles, Tag, Trash2, Users, X,
+  Sparkles, Tag, Trash2, Users, Workflow, X,
 } from 'lucide-react';
 import { useCRM } from '../../context/CRMContext';
 import { useToast } from '../../components/common/Toast';
@@ -24,6 +24,8 @@ import {
   getRelatedRecordsForAccount,
   getSelectableParentAccounts,
 } from '../../utils/accountsFilterEngine';
+import RecordTimeline from '../../components/common/RecordTimeline';
+import WhatsAppComposerModal, { WhatsAppIcon } from '../../components/common/WhatsAppComposerModal';
 
 export const ACCOUNT_RELATED_LIST_ITEMS = [
   { key: 'notes', label: 'Notes' },
@@ -47,6 +49,7 @@ export const ACCOUNT_RELATED_LIST_ITEMS = [
   { key: 'memberAccounts', label: 'Member Accounts' },
   { key: 'zohoSignDocuments', label: 'Zoho Sign Documents' },
   { key: 'zohoSurvey', label: 'Zoho Survey' },
+  { key: 'workflowRules', label: 'Workflow Rules' },
 ];
 
 const INDIAN_GST_STATES = [
@@ -98,6 +101,7 @@ export default function AccountDetail({
   onSelectAccount,
   activeUser,
   enforcePermissions = false,
+  initialTab = 'overview',
 }) {
   const navigate = useNavigate();
   const toast = useToast();
@@ -122,10 +126,16 @@ export default function AccountDetail({
     updateTask,
   } = useCRM();
 
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'timeline'
+  const [activeTab, setActiveTab] = useState(initialTab === 'timeline' ? 'timeline' : 'overview'); // 'overview' | 'timeline'
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [detailsExpanded, setDetailsExpanded] = useState(true);
   const [activeRelatedKey, setActiveRelatedKey] = useState('notes');
+
+  useEffect(() => {
+    if (initialTab === 'timeline' || initialTab === 'overview') {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
 
   // Notes state
   const [noteInput, setNoteInput] = useState('');
@@ -548,7 +558,7 @@ export default function AccountDetail({
           </div>
         </div>
 
-        {/* Right: Send Email, Edit, WhatsApp Chat, More (...), Prev/Next Record Navigation */}
+        {/* Right: Send Email, Send WhatsApp, Edit, Timeline, More (...), Prev/Next Record Navigation */}
         <div className="flex flex-wrap items-center gap-2 ml-auto">
           <button
             type="button"
@@ -561,73 +571,45 @@ export default function AccountDetail({
               });
               setComposeOpen(true);
             }}
-            className="h-8 px-3.5 rounded bg-[#1262E0] hover:bg-[#0B4BB8] text-white text-[12.5px] font-semibold inline-flex items-center gap-1.5 shadow-2xs transition-colors"
+            className="h-8 px-3 sm:px-3.5 rounded bg-[#1262E0] hover:bg-[#0B4BB8] text-white text-[12px] sm:text-[12.5px] font-semibold inline-flex items-center gap-1.5 shadow-2xs transition-colors"
           >
+            <Mail size={13.5} />
             <span>Send Email</span>
+          </button>
+
+          <button
+            type="button"
+            data-testid="account-detail-send-whatsapp-btn"
+            onClick={() => setWhatsappModalOpen(true)}
+            className="h-8 px-3 sm:px-3.5 rounded border border-[#16A34A]/30 bg-[#F0FDF4] hover:bg-[#DCFCE7] text-[#15803D] text-[12px] sm:text-[12.5px] font-semibold inline-flex items-center gap-1.5 shadow-2xs transition-colors"
+          >
+            <WhatsAppIcon size={14} className="text-[#16A34A]" />
+            <span>Send WhatsApp</span>
           </button>
 
           <button
             type="button"
             data-testid="account-detail-edit-btn"
             onClick={handleOpenEdit}
-            className="h-8 px-3.5 rounded border border-[#CBD5E1] bg-white hover:bg-[#F8FAFC] text-[#1E293B] text-[12.5px] font-medium inline-flex items-center gap-1.5 transition-colors"
+            className="h-8 px-3 sm:px-3.5 rounded border border-[#CBD5E1] bg-white hover:bg-[#F8FAFC] text-[#1E293B] text-[12px] sm:text-[12.5px] font-medium inline-flex items-center gap-1.5 transition-colors"
           >
             <span>Edit</span>
           </button>
 
-          {/* WhatsApp Chat Button + Dropdown (Matches Screenshot 1) */}
-          <div className="relative inline-flex">
-            <button
-              type="button"
-              data-testid="account-detail-whatsapp-btn"
-              onClick={() => {
-                setWhatsappMessage(`Hello ${account.clientName || account.name}, reaching out from ${userName(account.ownerId)} regarding your account.`);
-                setWhatsappModalOpen(true);
-              }}
-              className="h-8 px-3 rounded-l border border-[#CBD5E1] bg-white hover:bg-[#F8FAFC] text-[#1E293B] text-[12.5px] font-medium inline-flex items-center gap-1.5 transition-colors"
-            >
-              <MessageCircle size={13.5} className="text-[#16A34A]" />
-              <span>WhatsApp Chat</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setWhatsappMenuOpen((p) => !p)}
-              aria-label="WhatsApp options"
-              className="h-8 px-1.5 rounded-r border-y border-r border-[#CBD5E1] bg-white hover:bg-[#F8FAFC] text-[#475569] flex items-center"
-            >
-              <ChevronDown size={13} />
-            </button>
-
-            {whatsappMenuOpen && (
-              <div
-                onMouseLeave={() => setWhatsappMenuOpen(false)}
-                className="absolute right-0 top-full mt-1 w-48 rounded-lg border border-[#DCE3EE] bg-white shadow-lg py-1 z-40 text-[12.5px]"
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    setWhatsappMenuOpen(false);
-                    setWhatsappMessage(`Hello ${account.clientName || account.name}, following up on your account.`);
-                    setWhatsappModalOpen(true);
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-left text-[#334155] hover:bg-[#F8FAFC]"
-                >
-                  <MessageCircle size={13.5} className="text-[#16A34A]" /> Send WhatsApp Message
-                </button>
-                {cleanDigits && (
-                  <a
-                    href={`https://wa.me/${cleanDigits}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={() => setWhatsappMenuOpen(false)}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left text-[#334155] hover:bg-[#F8FAFC]"
-                  >
-                    <ExternalLink size={13.5} className="text-[#64748B]" /> Open in WhatsApp Web
-                  </a>
-                )}
-              </div>
-            )}
-          </div>
+          <button
+            type="button"
+            data-testid="account-detail-workflow-timeline-btn"
+            title="View chronological Workflow & Activity Timeline"
+            onClick={() => setActiveTab((prev) => (prev === 'timeline' ? 'overview' : 'timeline'))}
+            className={`h-8 px-3 rounded border text-[12px] sm:text-[12.5px] font-medium inline-flex items-center gap-1.5 transition-colors ${
+              activeTab === 'timeline'
+                ? 'border-[#1262E0] bg-[#EFF6FF] text-[#1262E0] font-semibold'
+                : 'border-[#CBD5E1] bg-white hover:bg-[#F8FAFC] text-[#1E293B]'
+            }`}
+          >
+            <Workflow size={14} className={activeTab === 'timeline' ? 'text-[#1262E0]' : 'text-[#6D28D9]'} />
+            <span>Timeline</span>
+          </button>
 
           {/* More Actions Menu (...) */}
           <div className="relative">
@@ -942,14 +924,11 @@ export default function AccountDetail({
                           </a>
                           <button
                             type="button"
-                            onClick={() => {
-                              setWhatsappMessage(`Hello ${account.clientName || account.name}, reaching out regarding your account.`);
-                              setWhatsappModalOpen(true);
-                            }}
-                            title="WhatsApp Chat"
+                            onClick={() => setWhatsappModalOpen(true)}
+                            title="Send WhatsApp"
                             className="w-4 h-4 rounded-full bg-[#16A34A] text-white inline-flex items-center justify-center"
                           >
-                            <MessageCircle size={9} />
+                            <WhatsAppIcon size={9.5} />
                           </button>
                         </>
                       )}
@@ -1190,14 +1169,11 @@ export default function AccountDetail({
                                   </a>
                                   <button
                                     type="button"
-                                    onClick={() => {
-                                      setWhatsappMessage(`Hello ${account.clientName || account.name}, following up on your account.`);
-                                      setWhatsappModalOpen(true);
-                                    }}
-                                    title="WhatsApp Chat"
+                                    onClick={() => setWhatsappModalOpen(true)}
+                                    title="Send WhatsApp"
                                     className="w-4 h-4 rounded-full bg-[#16A34A] text-white inline-flex items-center justify-center"
                                   >
-                                    <MessageCircle size={9} />
+                                    <WhatsAppIcon size={9.5} />
                                   </button>
                                 </span>
                               ) : (
@@ -1205,7 +1181,33 @@ export default function AccountDetail({
                               )
                             }
                           />
-                          <FieldRow label="Phone" value={account.phone || '—'} />
+                          <FieldRow
+                            label="Phone"
+                            value={
+                              account.phone ? (
+                                <span className="inline-flex items-center gap-2">
+                                  <span>{account.phone}</span>
+                                  <a
+                                    href={`tel:${String(account.phone).replace(/\s/g, '')}`}
+                                    title={`Call ${account.phone}`}
+                                    className="w-4 h-4 rounded-full bg-[#10B981] text-white inline-flex items-center justify-center"
+                                  >
+                                    <Phone size={9} className="fill-current" />
+                                  </a>
+                                  <button
+                                    type="button"
+                                    onClick={() => setWhatsappModalOpen(true)}
+                                    title={`Send WhatsApp to ${account.phone}`}
+                                    className="w-4 h-4 rounded-full bg-[#16A34A] text-white inline-flex items-center justify-center"
+                                  >
+                                    <WhatsAppIcon size={9.5} />
+                                  </button>
+                                </span>
+                              ) : (
+                                '—'
+                              )
+                            }
+                          />
                           <FieldRow
                             label="Website"
                             value={
@@ -2698,123 +2700,20 @@ export default function AccountDetail({
                   )}
                 </div>
               </div>
+              {/* 22. WORKFLOW RULES — CHRONOLOGICAL TIMELINE VIEW */}
+              <div
+                id="account-related-section-workflowRules"
+                className="scroll-mt-28"
+              >
+                <RecordTimeline recordType="account" record={account} />
+              </div>
             </div>
           ) : (
             /* =============================================================== */
             /* TAB 2: TIMELINE                                                 */
             /* =============================================================== */
-            <div className="p-4 max-w-[1100px] space-y-4">
-              <div className="bg-white rounded-md border border-[#DCE3EE] p-5 shadow-2xs">
-                <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3 mb-4">
-                  <div className="flex items-center gap-2">
-                    <History size={16} className="text-[#1262E0]" />
-                    <h2 className="text-[14px] font-bold text-[#0F172A]">
-                      Account Activity & Audit Timeline — {account.name}
-                    </h2>
-                  </div>
-                  <span className="text-[12px] text-[#64748B]">
-                    Showing chronological history for ID <code className="font-mono text-[#0F172A]">{account.id}</code>
-                  </span>
-                </div>
-
-                <ol className="relative border-l-2 border-[#E2E8F0] ml-3 space-y-5 py-1">
-                  {/* Account Created Event */}
-                  <li className="ml-5">
-                    <span className="absolute -left-[7px] w-3 h-3 rounded-full bg-[#1262E0] ring-4 ring-white" />
-                    <div className="text-[12.5px] font-semibold text-[#0F172A]">
-                      Account Record Created
-                    </div>
-                    <div className="text-[11.5px] text-[#64748B]">
-                      By {userName(account.createdBy || account.ownerId)} · {fmtDate(account.createdTime || account.createdOn)}
-                    </div>
-                  </li>
-
-                  {/* Deals Events */}
-                  {relDeals.map((d) => (
-                    <li key={d.id} className="ml-5">
-                      <span className="absolute -left-[7px] w-3 h-3 rounded-full bg-[#10B981] ring-4 ring-white" />
-                      <div className="text-[12.5px] font-semibold text-[#0F172A]">
-                        Deal Associated:{' '}
-                        <Link to={`/deals?open=${d.id}`} className="text-[#1262E0] hover:underline">
-                          {d.name}
-                        </Link>{' '}
-                        ({fmtINR(d.amount)})
-                      </div>
-                      <div className="text-[11.5px] text-[#64748B]">
-                        Stage: {d.stage} · Closing {fmtDate(d.closingDate)}
-                      </div>
-                    </li>
-                  ))}
-
-                  {/* Contacts Events */}
-                  {relContacts.map((c) => (
-                    <li key={c.id} className="ml-5">
-                      <span className="absolute -left-[7px] w-3 h-3 rounded-full bg-[#3B82F6] ring-4 ring-white" />
-                      <div className="text-[12.5px] font-semibold text-[#0F172A]">
-                        Contact Linked:{' '}
-                        <Link to={`/contacts/${c.id}`} className="text-[#1262E0] hover:underline">
-                          {c.name}
-                        </Link>
-                      </div>
-                      <div className="text-[11.5px] text-[#64748B]">
-                        {c.designation || 'Contact'} · {c.email}
-                      </div>
-                    </li>
-                  ))}
-
-                  {/* Calls Events */}
-                  {relCalls.map((c) => (
-                    <li key={c.id} className="ml-5">
-                      <span className="absolute -left-[7px] w-3 h-3 rounded-full bg-[#6366F1] ring-4 ring-white" />
-                      <div className="text-[12.5px] font-semibold text-[#0F172A]">
-                        {c.type} Call:{' '}
-                        <Link to={`/calls?open=${c.id}`} className="text-[#1262E0] hover:underline">
-                          {c.subject}
-                        </Link>
-                      </div>
-                      <div className="text-[11.5px] text-[#64748B]">
-                        Status: {c.status} · {fmtDate(String(c.dateTime || '').slice(0, 10))}
-                      </div>
-                    </li>
-                  ))}
-
-                  {/* Emails Events */}
-                  {relEmails.map((em) => (
-                    <li key={em.id} className="ml-5">
-                      <span className="absolute -left-[7px] w-3 h-3 rounded-full bg-[#F59E0B] ring-4 ring-white" />
-                      <div className="text-[12.5px] font-semibold text-[#0F172A]">
-                        Email ({em.direction || 'Sent'}): {em.subject}
-                      </div>
-                      <div className="text-[11.5px] text-[#64748B]">
-                        Status: {em.status} · {fmtDate(em.createdDate)}
-                      </div>
-                    </li>
-                  ))}
-
-                  {/* Notes Events */}
-                  {relNotes.map((n) => (
-                    <li key={n.id} className="ml-5">
-                      <span className="absolute -left-[7px] w-3 h-3 rounded-full bg-[#8B5CF6] ring-4 ring-white" />
-                      <div className="text-[12.5px] font-semibold text-[#0F172A]">
-                        Note Added: {n.title || 'Note'}
-                      </div>
-                      <div className="text-[12px] text-[#334155] mt-0.5">{n.content}</div>
-                      <div className="text-[11px] text-[#64748B] mt-0.5">{fmtDate(n.createdDate)}</div>
-                    </li>
-                  ))}
-
-                  {/* Latest Modification Event */}
-                  <li className="ml-5">
-                    <span className="absolute -left-[7px] w-3 h-3 rounded-full bg-[#0EA5E9] ring-4 ring-white" />
-                    <div className="text-[12.5px] font-semibold text-[#0F172A]">
-                      Last Modified
-                    </div>
-                    <div className="text-[11.5px] text-[#64748B]">
-                      By {userName(account.modifiedBy || account.ownerId)} · {fmtDate(account.modifiedTime || account.lastActivityTime)}
-                    </div>
-                  </li>
-                </ol>
-              </div>
+            <div className="p-3 sm:p-4 max-w-[1150px]">
+              <RecordTimeline recordType="account" record={account} />
             </div>
           )}
         </div>
@@ -3292,65 +3191,40 @@ export default function AccountDetail({
       </Modal>
 
       {/* ================================================================= */}
-      {/* 6. WHATSAPP CHAT MODAL                                            */}
+      {/* 6. SEND WHATSAPP MODAL                                            */}
       {/* ================================================================= */}
-      <Modal
+      <WhatsAppComposerModal
         open={whatsappModalOpen}
         onClose={() => setWhatsappModalOpen(false)}
-        title={`WhatsApp Chat — ${account.name}`}
-        subtitle={phoneOrMobile ? `Recipient: ${phoneOrMobile}` : 'Log or launch WhatsApp message for this account'}
-      >
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!whatsappMessage.trim()) return;
-            addAccountRelatedRecord('notes', {
-              accountId: account.id,
-              title: 'WhatsApp Outbound Message',
-              content: whatsappMessage.trim(),
-              ownerId: account.ownerId || 'u1',
-              status: 'Sent',
-            });
-            updateRecord('accounts', account.id, { lastActivityTime: todayISO() });
-            toast.success(`WhatsApp message logged for ${account.name}`);
-            setWhatsappModalOpen(false);
-          }}
-          className="space-y-3"
-        >
-          <div>
-            <label className="block text-[12px] font-medium text-[#475569] mb-1">WhatsApp Message</label>
-            <textarea
-              rows={4}
-              required
-              value={whatsappMessage}
-              onChange={(e) => setWhatsappMessage(e.target.value)}
-              className="input text-[13px] py-2 w-full"
-            />
-          </div>
-          <div className="flex items-center justify-between pt-2">
-            {cleanDigits ? (
-              <a
-                href={`https://wa.me/${cleanDigits}?text=${encodeURIComponent(whatsappMessage)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[12px] text-[#16A34A] hover:underline font-semibold inline-flex items-center gap-1"
-              >
-                <ExternalLink size={12.5} /> Launch WhatsApp Web
-              </a>
-            ) : (
-              <span className="text-[11.5px] text-[#64748B]">No mobile number on file</span>
-            )}
-            <div className="flex items-center gap-2">
-              <button type="button" onClick={() => setWhatsappModalOpen(false)} className="btn-secondary">
-                Cancel
-              </button>
-              <button type="submit" className="btn-primary">
-                Send & Log Message
-              </button>
-            </div>
-          </div>
-        </form>
-      </Modal>
+        recordType="Account"
+        recordName={account.name}
+        recordSubtitle={
+          account.clientName || primaryContact?.name
+            ? `Primary Contact: ${account.clientName || primaryContact?.name}${
+                account.industry ? ` · ${account.industry}` : ''
+              }`
+            : account.industry || ''
+        }
+        mobile={account.mobile}
+        phone={account.phone}
+        otherPhone={primaryContact?.mobile || primaryContact?.phone || ''}
+        ownerName={userName(account.ownerId)}
+        defaultMessage={`Hi ${primaryContact?.firstName || account.clientName || account.name} team,\n\nHope you are doing well. Reaching out regarding our ongoing engagement with ${account.name}.\n\nBest regards,\n${userName(account.ownerId) || 'Sales Team'}`}
+        onSavePhone={(updates) => {
+          if (!canModifyRecord()) return;
+          updateRecord('accounts', account.id, {
+            ...updates,
+            modifiedTime: todayISO(),
+            lastActivityTime: todayISO(),
+          });
+          toast.success(`Updated WhatsApp number on ${account.name}`);
+        }}
+        onOpenedWhatsApp={({ number, mode }) => {
+          toast.info(
+            `Opened ${mode === 'web' ? 'WhatsApp Web' : 'WhatsApp'} for ${number}. Please confirm and press Send in WhatsApp.`
+          );
+        }}
+      />
 
       {/* ================================================================= */}
       {/* 7. LOCATE MAP MODAL                                               */}
