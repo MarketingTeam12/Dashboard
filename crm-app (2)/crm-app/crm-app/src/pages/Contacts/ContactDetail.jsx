@@ -16,6 +16,7 @@ import { LEAD_SOURCES, SALUTATIONS, VENDORS, DEPARTMENTS } from '../../data/seed
 import { fmtINR, fmtDate, todayISO, addDays } from '../../utils/calculations';
 import { getRelatedRecordsForContact } from '../../utils/contactsFilterEngine';
 import RecordTimeline from '../../components/common/RecordTimeline';
+import WhatsAppComposerModal, { WhatsAppIcon } from '../../components/common/WhatsAppComposerModal';
 
 export const CONTACT_RELATED_LIST_ITEMS = [
   { key: 'notes', label: 'Notes' },
@@ -110,6 +111,8 @@ export default function ContactDetail({
   const [editErrors, setEditErrors] = useState({});
   const [composeOpen, setComposeOpen] = useState(false);
   const [composeData, setComposeData] = useState({ subject: '', body: '' });
+  const [whatsappModalOpen, setWhatsappModalOpen] = useState(false);
+  const [whatsappPreferredField, setWhatsappPreferredField] = useState('');
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [newTaskModalOpen, setNewTaskModalOpen] = useState(false);
@@ -494,10 +497,11 @@ export default function ContactDetail({
           </div>
         </div>
 
-        {/* Right: Send Email, Edit, More (...), Prev/Next Record Navigation */}
-        <div className="flex items-center gap-2 ml-auto">
+        {/* Right: Send Email, Send WhatsApp, Edit, More (...), Prev/Next Record Navigation */}
+        <div className="flex flex-wrap items-center gap-2 ml-auto">
           <button
             type="button"
+            data-testid="contact-detail-send-email-btn"
             onClick={() => {
               setComposeData({
                 subject: `Follow-up with ${contact.name} (${accountName(contact.accountId)})`,
@@ -505,15 +509,29 @@ export default function ContactDetail({
               });
               setComposeOpen(true);
             }}
-            className="h-8 px-3.5 rounded bg-[#1262E0] hover:bg-[#0B4BB8] text-white text-[12.5px] font-semibold inline-flex items-center gap-1.5 shadow-2xs transition-colors"
+            className="h-8 px-3 sm:px-3.5 rounded bg-[#1262E0] hover:bg-[#0B4BB8] text-white text-[12px] sm:text-[12.5px] font-semibold inline-flex items-center gap-1.5 shadow-2xs transition-colors"
           >
+            <Mail size={13.5} />
             <span>Send Email</span>
           </button>
 
           <button
             type="button"
+            data-testid="contact-detail-send-whatsapp-btn"
+            onClick={() => {
+              setWhatsappPreferredField('');
+              setWhatsappModalOpen(true);
+            }}
+            className="h-8 px-3 sm:px-3.5 rounded border border-[#16A34A]/30 bg-[#F0FDF4] hover:bg-[#DCFCE7] text-[#15803D] text-[12px] sm:text-[12.5px] font-semibold inline-flex items-center gap-1.5 shadow-2xs transition-colors"
+          >
+            <WhatsAppIcon size={14} className="text-[#16A34A]" />
+            <span>Send WhatsApp</span>
+          </button>
+
+          <button
+            type="button"
             onClick={handleOpenEdit}
-            className="h-8 px-3.5 rounded border border-[#CBD5E1] bg-white hover:bg-[#F8FAFC] text-[#1E293B] text-[12.5px] font-medium inline-flex items-center gap-1.5 transition-colors"
+            className="h-8 px-3 sm:px-3.5 rounded border border-[#CBD5E1] bg-white hover:bg-[#F8FAFC] text-[#1E293B] text-[12px] sm:text-[12.5px] font-medium inline-flex items-center gap-1.5 transition-colors"
           >
             <span>Edit</span>
           </button>
@@ -549,6 +567,17 @@ export default function ContactDetail({
                 onMouseLeave={() => setMoreMenuOpen(false)}
                 className="absolute right-0 top-full mt-1 w-48 rounded-lg border border-[#DCE3EE] bg-white shadow-lg py-1 z-40 text-[12.5px]"
               >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMoreMenuOpen(false);
+                    setWhatsappPreferredField('');
+                    setWhatsappModalOpen(true);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left text-[#334155] hover:bg-[#F8FAFC]"
+                >
+                  <WhatsAppIcon size={13.5} className="text-[#16A34A]" /> Send WhatsApp
+                </button>
                 <button
                   type="button"
                   onClick={() => {
@@ -828,13 +857,26 @@ export default function ContactDetail({
                     <span className="col-span-8 inline-flex items-center gap-2 font-medium text-[#0F172A]">
                       <span>{contact.phone || '—'}</span>
                       {contact.phone && (
-                        <a
-                          href={`tel:${String(contact.phone).replace(/\s/g, '')}`}
-                          title={`Call ${contact.phone}`}
-                          className="w-4 h-4 rounded-full bg-[#10B981] text-white inline-flex items-center justify-center"
-                        >
-                          <Phone size={9} className="fill-current" />
-                        </a>
+                        <>
+                          <a
+                            href={`tel:${String(contact.phone).replace(/\s/g, '')}`}
+                            title={`Call ${contact.phone}`}
+                            className="w-4 h-4 rounded-full bg-[#10B981] text-white inline-flex items-center justify-center"
+                          >
+                            <Phone size={9} className="fill-current" />
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setWhatsappPreferredField('phone');
+                              setWhatsappModalOpen(true);
+                            }}
+                            title={`Send WhatsApp to ${contact.phone}`}
+                            className="w-4 h-4 rounded-full bg-[#16A34A] text-white inline-flex items-center justify-center"
+                          >
+                            <WhatsAppIcon size={9.5} />
+                          </button>
+                        </>
                       )}
                     </span>
                   </div>
@@ -843,13 +885,26 @@ export default function ContactDetail({
                     <span className="col-span-8 inline-flex items-center gap-2 font-medium text-[#0F172A]">
                       <span>{contact.mobile || contact.phone || '—'}</span>
                       {(contact.mobile || contact.phone) && (
-                        <a
-                          href={`tel:${String(contact.mobile || contact.phone).replace(/\s/g, '')}`}
-                          title={`Call ${contact.mobile || contact.phone}`}
-                          className="w-4 h-4 rounded-full bg-[#10B981] text-white inline-flex items-center justify-center"
-                        >
-                          <Phone size={9} className="fill-current" />
-                        </a>
+                        <>
+                          <a
+                            href={`tel:${String(contact.mobile || contact.phone).replace(/\s/g, '')}`}
+                            title={`Call ${contact.mobile || contact.phone}`}
+                            className="w-4 h-4 rounded-full bg-[#10B981] text-white inline-flex items-center justify-center"
+                          >
+                            <Phone size={9} className="fill-current" />
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setWhatsappPreferredField(contact.mobile ? 'mobile' : 'phone');
+                              setWhatsappModalOpen(true);
+                            }}
+                            title={`Send WhatsApp to ${contact.mobile || contact.phone}`}
+                            className="w-4 h-4 rounded-full bg-[#16A34A] text-white inline-flex items-center justify-center"
+                          >
+                            <WhatsAppIcon size={9.5} />
+                          </button>
+                        </>
                       )}
                     </span>
                   </div>
@@ -988,9 +1043,96 @@ export default function ContactDetail({
                               )
                             }
                           />
-                          <FieldRow label="Phone" value={contact.phone || '—'} />
-                          <FieldRow label="Other Phone" value={contact.otherPhone || '—'} />
-                          <FieldRow label="Mobile" value={contact.mobile || '—'} />
+                          <FieldRow
+                            label="Phone"
+                            value={
+                              contact.phone ? (
+                                <span className="inline-flex items-center gap-2">
+                                  <span>{contact.phone}</span>
+                                  <a
+                                    href={`tel:${String(contact.phone).replace(/\s/g, '')}`}
+                                    title={`Call ${contact.phone}`}
+                                    className="w-4 h-4 rounded-full bg-[#10B981] text-white inline-flex items-center justify-center"
+                                  >
+                                    <Phone size={9} className="fill-current" />
+                                  </a>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setWhatsappPreferredField('phone');
+                                      setWhatsappModalOpen(true);
+                                    }}
+                                    title={`Send WhatsApp to ${contact.phone}`}
+                                    className="w-4 h-4 rounded-full bg-[#16A34A] text-white inline-flex items-center justify-center"
+                                  >
+                                    <WhatsAppIcon size={9.5} />
+                                  </button>
+                                </span>
+                              ) : (
+                                '—'
+                              )
+                            }
+                          />
+                          <FieldRow
+                            label="Other Phone"
+                            value={
+                              contact.otherPhone ? (
+                                <span className="inline-flex items-center gap-2">
+                                  <span>{contact.otherPhone}</span>
+                                  <a
+                                    href={`tel:${String(contact.otherPhone).replace(/\s/g, '')}`}
+                                    title={`Call ${contact.otherPhone}`}
+                                    className="w-4 h-4 rounded-full bg-[#10B981] text-white inline-flex items-center justify-center"
+                                  >
+                                    <Phone size={9} className="fill-current" />
+                                  </a>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setWhatsappPreferredField('otherPhone');
+                                      setWhatsappModalOpen(true);
+                                    }}
+                                    title={`Send WhatsApp to ${contact.otherPhone}`}
+                                    className="w-4 h-4 rounded-full bg-[#16A34A] text-white inline-flex items-center justify-center"
+                                  >
+                                    <WhatsAppIcon size={9.5} />
+                                  </button>
+                                </span>
+                              ) : (
+                                '—'
+                              )
+                            }
+                          />
+                          <FieldRow
+                            label="Mobile"
+                            value={
+                              contact.mobile ? (
+                                <span className="inline-flex items-center gap-2">
+                                  <span>{contact.mobile}</span>
+                                  <a
+                                    href={`tel:${String(contact.mobile).replace(/\s/g, '')}`}
+                                    title={`Call ${contact.mobile}`}
+                                    className="w-4 h-4 rounded-full bg-[#10B981] text-white inline-flex items-center justify-center"
+                                  >
+                                    <Phone size={9} className="fill-current" />
+                                  </a>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setWhatsappPreferredField('mobile');
+                                      setWhatsappModalOpen(true);
+                                    }}
+                                    title={`Send WhatsApp to ${contact.mobile}`}
+                                    className="w-4 h-4 rounded-full bg-[#16A34A] text-white inline-flex items-center justify-center"
+                                  >
+                                    <WhatsAppIcon size={9.5} />
+                                  </button>
+                                </span>
+                              ) : (
+                                '—'
+                              )
+                            }
+                          />
                           <FieldRow label="Assistant" value={contact.assistant || '—'} />
                           <FieldRow
                             label="Created By"
@@ -1026,7 +1168,36 @@ export default function ContactDetail({
                           <FieldRow label="Vendor Name" value={contact.vendorName || '—'} />
                           <FieldRow label="Title" value={contact.designation || '—'} />
                           <FieldRow label="Department" value={contact.department || '—'} />
-                          <FieldRow label="Home Phone" value={contact.homePhone || '—'} />
+                          <FieldRow
+                            label="Home Phone"
+                            value={
+                              contact.homePhone ? (
+                                <span className="inline-flex items-center gap-2">
+                                  <span>{contact.homePhone}</span>
+                                  <a
+                                    href={`tel:${String(contact.homePhone).replace(/\s/g, '')}`}
+                                    title={`Call ${contact.homePhone}`}
+                                    className="w-4 h-4 rounded-full bg-[#10B981] text-white inline-flex items-center justify-center"
+                                  >
+                                    <Phone size={9} className="fill-current" />
+                                  </a>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setWhatsappPreferredField('homePhone');
+                                      setWhatsappModalOpen(true);
+                                    }}
+                                    title={`Send WhatsApp to ${contact.homePhone}`}
+                                    className="w-4 h-4 rounded-full bg-[#16A34A] text-white inline-flex items-center justify-center"
+                                  >
+                                    <WhatsAppIcon size={9.5} />
+                                  </button>
+                                </span>
+                              ) : (
+                                '—'
+                              )
+                            }
+                          />
                           <FieldRow label="Fax" value={contact.fax || '—'} />
                           <FieldRow label="Date of Birth" value={contact.dateOfBirth || '—'} />
                           <FieldRow label="Asst Phone" value={contact.asstPhone || '—'} />
@@ -2228,6 +2399,44 @@ export default function ContactDetail({
           </div>
         </form>
       </Modal>
+
+      {/* ================================================================= */}
+      {/* 6B. SEND WHATSAPP MODAL                                           */}
+      {/* ================================================================= */}
+      <WhatsAppComposerModal
+        open={whatsappModalOpen}
+        onClose={() => setWhatsappModalOpen(false)}
+        recordType="Contact"
+        recordName={contact.name}
+        recordSubtitle={
+          accountName(contact.accountId) && accountName(contact.accountId) !== '—'
+            ? `${contact.title ? `${contact.title} · ` : ''}${accountName(contact.accountId)}`
+            : contact.title || ''
+        }
+        mobile={contact.mobile}
+        phone={contact.phone}
+        otherPhone={contact.otherPhone}
+        homePhone={contact.homePhone}
+        preferredField={whatsappPreferredField}
+        ownerName={userName(contact.ownerId)}
+        defaultMessage={`Hi ${contact.firstName || contact.name},\n\nHope you are doing well. Following up on our recent conversation${
+          accountName(contact.accountId) && accountName(contact.accountId) !== '—'
+            ? ` with ${accountName(contact.accountId)}`
+            : ''
+        }.\n\nBest regards,\n${userName(contact.ownerId) || 'Sales Team'}`}
+        onSavePhone={(updates) => {
+          updateRecord('contacts', contact.id, {
+            ...updates,
+            modifiedTime: todayISO(),
+          });
+          toast.success(`Updated WhatsApp number on ${contact.name}`);
+        }}
+        onOpenedWhatsApp={({ number, mode }) => {
+          toast.info(
+            `Opened ${mode === 'web' ? 'WhatsApp Web' : 'WhatsApp'} for ${number}. Please confirm and press Send in WhatsApp.`
+          );
+        }}
+      />
 
       {/* ================================================================= */}
       {/* 7. CREATE TASK MODAL                                              */}

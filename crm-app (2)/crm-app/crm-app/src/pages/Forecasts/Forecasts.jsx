@@ -946,7 +946,6 @@ export default function Forecasts() {
       },
       { label: 'Predicted Achievement (INR)', value: (r) => fmtINR2(r.predictedAchievement) },
       { label: 'Pipeline (INR)', value: (r) => fmtINR2(r.pipeline) },
-      { label: 'Anomalies Count', value: (r) => r.anomalies.length },
       { label: 'Committed (INR)', value: (r) => fmtINR2(r.committed) },
       { label: 'Best Case (INR)', value: (r) => fmtINR2(r.bestCase) },
     ]);
@@ -1219,7 +1218,6 @@ export default function Forecasts() {
                 <tbody className="divide-y divide-line-soft">
                   {row.contributingDeals.map((d) => {
                     const cat = getDealForecastCategory(d);
-                    const dealAnomalies = evaluateDealAnomalies(d, today);
                     const isOverdue = isOpen(d) && d.closingDate && d.closingDate < today;
 
                     return (
@@ -1233,15 +1231,6 @@ export default function Forecasts() {
                               <span>{d.name}</span>
                               <ExternalLink size={11} className="shrink-0" />
                             </Link>
-                            {dealAnomalies.length > 0 && (
-                              <span
-                                title={dealAnomalies.map((a) => a.detail).join(' ')}
-                                className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-[#FEF3F2] text-[#B42318] border border-[#FECDCA]"
-                              >
-                                <AlertTriangle size={10} className="mr-0.5" />
-                                Anomaly
-                              </span>
-                            )}
                           </div>
                         </td>
                         <td className="py-2 px-3 text-ink-600">{accountName(d.accountId)}</td>
@@ -1858,31 +1847,39 @@ export default function Forecasts() {
               </div>
             </div>
 
-            {/* Saved Forecast Period Table (Screenshot 1) */}
+            {/* Saved Forecast Period Table */}
             <div className="overflow-x-auto thin-scroll border border-[#E5E7EB] rounded-lg">
               <table
                 data-testid="saved-forecast-table"
-                className="w-full text-left border-collapse text-[13px] min-w-[1040px]"
+                className="w-full table-fixed text-left border-collapse text-[13px] min-w-[920px]"
               >
+                <colgroup>
+                  <col className="w-[15%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[17%]" />
+                  <col className="w-[8.5%]" />
+                  <col className="w-[14.5%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[10.5%]" />
+                  <col className="w-[11.5%]" />
+                </colgroup>
                 <thead>
                   <tr className="bg-[#F8FAFD] border-b border-[#E5E7EB] text-[12px] font-semibold text-[#4B5563]">
-                    <th className="py-2.5 px-3 w-[190px]">Period</th>
+                    <th className="py-2.5 px-3.5">Period</th>
                     <th className="py-2.5 px-3">Target</th>
                     <th className="py-2.5 px-3">Achievement</th>
                     <th className="py-2.5 px-3">Gap</th>
                     <th className="py-2.5 px-3">Predicted Achievement</th>
                     <th className="py-2.5 px-3">Pipeline</th>
-                    <th className="py-2.5 px-3">Anomalies</th>
                     <th className="py-2.5 px-3">Committed</th>
                     <th className="py-2.5 px-3">Best Case</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#F1F3F5] text-[13px]">
+                <tbody className="divide-y divide-[#F1F3F5] text-[13px] tabular-nums">
                   {activeSavedCardFilteredRows.map((row) => {
                     const { forecast, bounds } = row;
                     const isExpanded =
                       expandedRows.has(forecast.id) || forecast.periodType === 'Annual';
-                    const anomalyCount = row.anomalies.length;
 
                     return (
                       <Fragment key={forecast.id}>
@@ -1892,7 +1889,7 @@ export default function Forecasts() {
                           }`}
                         >
                           {/* 1. Period with Expand Button & Row Actions ("..." -> View full hierarchy) */}
-                          <td className="py-2.5 px-3 align-middle whitespace-nowrap">
+                          <td className="py-2.5 px-3.5 align-middle whitespace-nowrap">
                             <div className="flex items-center gap-2 group relative">
                               <button
                                 type="button"
@@ -1900,13 +1897,13 @@ export default function Forecasts() {
                                 onClick={() => toggleExpand(forecast.id)}
                                 aria-expanded={isExpanded}
                                 aria-label={`${isExpanded ? 'Collapse' : 'Expand'} details for ${bounds.shortLabel}`}
-                                className="w-4 h-4 rounded border border-[#CBD5E1] bg-white flex items-center justify-center text-[10px] text-[#64748B] font-mono hover:border-[#94A3B8] transition-colors focus:outline-none"
+                                className="w-4 h-4 rounded border border-[#CBD5E1] bg-white flex items-center justify-center text-[10px] text-[#64748B] font-mono hover:border-[#94A3B8] transition-colors focus:outline-none shrink-0"
                               >
                                 {isExpanded ? '−' : '+'}
                               </button>
                               <span className="font-medium text-[#1F2937]">{bounds.shortLabel}</span>
 
-                              {/* "..." button matching Screenshot 1 */}
+                              {/* "..." button */}
                               <div className="relative">
                                 <button
                                   type="button"
@@ -2007,41 +2004,19 @@ export default function Forecasts() {
                             {fmtINR2(row.pipeline)}
                           </td>
 
-                          {/* 7. Anomalies */}
-                          <td className="py-2.5 px-3 align-middle whitespace-nowrap">
-                            {anomalyCount > 0 ? (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setAnomalyModal({
-                                    periodLabel: bounds.shortLabel,
-                                    forecastName: forecast.name,
-                                    anomalies: row.anomalies,
-                                  })
-                                }
-                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-[#FEF3F2] text-[#B42318] border border-[#FECDCA] hover:bg-[#FEE4E2]"
-                              >
-                                <AlertTriangle size={11} className="text-[#D92D20] shrink-0" />
-                                <span>{anomalyCount} Flagged</span>
-                              </button>
-                            ) : (
-                              <span className="text-[#9CA3AF]">-</span>
-                            )}
-                          </td>
-
-                          {/* 8. Committed */}
+                          {/* 7. Committed */}
                           <td className="py-2.5 px-3 align-middle whitespace-nowrap text-[#1F2937]">
                             {fmtINR2(row.committed)}
                           </td>
 
-                          {/* 9. Best Case + View full hierarchy link */}
+                          {/* 8. Best Case + View full hierarchy link */}
                           <td className="py-2.5 px-3 align-middle whitespace-nowrap text-[#1F2937]">
-                            <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center justify-between gap-2">
                               <span>{fmtINR2(row.bestCase)}</span>
                               <button
                                 type="button"
                                 onClick={() => openSetTargetForExistingForecast(forecast)}
-                                className="text-[11.5px] font-medium text-[#2563EB] hover:underline"
+                                className="text-[11.5px] font-medium text-[#2563EB] hover:underline shrink-0"
                               >
                                 View full hierarchy
                               </button>
@@ -2052,7 +2027,7 @@ export default function Forecasts() {
                         {/* Expanded Period Breakdown (Teams, Owners, Deals, Annual Sub-periods) */}
                         {isExpanded && (
                           <tr className="bg-[#F8FAFC]">
-                            <td colSpan={9} className="p-4 border-b border-[#E5E7EB]">
+                            <td colSpan={8} className="p-4 border-b border-[#E5E7EB]">
                               {renderExpandedPeriodDetails(row)}
                             </td>
                           </tr>
@@ -2292,38 +2267,49 @@ export default function Forecasts() {
 
                   {/* Table Container with Contained Scroll */}
                   <div className="overflow-x-auto thin-scroll">
-                    <table className="w-full text-left border-collapse text-[13px] min-w-[1040px]">
+                    <table
+                      data-testid={`forecast-card-table-${card.title}`}
+                      className="w-full table-fixed text-left border-collapse text-[13px] min-w-[920px]"
+                    >
+                      <colgroup>
+                        <col className="w-[15%]" />
+                        <col className="w-[12.5%]" />
+                        <col className="w-[17.5%]" />
+                        <col className="w-[8.5%]" />
+                        <col className="w-[14.5%]" />
+                        <col className="w-[11%]" />
+                        <col className="w-[10.5%]" />
+                        <col className="w-[10.5%]" />
+                      </colgroup>
                       <thead>
                         <tr className="bg-[#F8FAFD] border-b border-[#E5E7EB] text-[12px] font-semibold text-[#4B5563]">
-                          <th className="py-2.5 px-3 w-[180px]">Period</th>
+                          <th className="py-2.5 px-3.5">Period</th>
                           <th className="py-2.5 px-3">Target</th>
                           <th className="py-2.5 px-3">Achievement</th>
                           <th className="py-2.5 px-3">Gap</th>
                           <th className="py-2.5 px-3">Predicted Achievement</th>
                           <th className="py-2.5 px-3">Pipeline</th>
-                          <th className="py-2.5 px-3">Anomalies</th>
                           <th className="py-2.5 px-3">Committed</th>
                           <th className="py-2.5 px-3">Best Case</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-[#F1F3F5] text-[13px]">
+                      <tbody className="divide-y divide-[#F1F3F5] text-[13px] tabular-nums">
                         {card.rows.map((row) => {
                           const { forecast, bounds } = row;
                           const isExpanded = expandedRows.has(forecast.id);
-                          const anomalyCount = row.anomalies.length;
 
                           return (
                             <Fragment key={forecast.id}>
                               <tr className={`transition-colors ${isExpanded ? 'bg-[#F9FBFF]' : 'hover:bg-[#F9FAFB]'}`}>
                                 {/* 1. Period with Expand Button */}
-                                <td className="py-2.5 px-3 align-middle whitespace-nowrap">
+                                <td className="py-2.5 px-3.5 align-middle whitespace-nowrap">
                                   <div className="flex items-center gap-2 group">
                                     <button
                                       type="button"
                                       onClick={() => toggleExpand(forecast.id)}
                                       aria-expanded={isExpanded}
                                       aria-label={`${isExpanded ? 'Collapse' : 'Expand'} details for ${bounds.shortLabel}`}
-                                      className="w-4 h-4 rounded border border-[#CBD5E1] bg-white flex items-center justify-center text-[10px] text-[#64748B] font-mono hover:border-[#94A3B8] transition-colors focus:outline-none"
+                                      className="w-4 h-4 rounded border border-[#CBD5E1] bg-white flex items-center justify-center text-[10px] text-[#64748B] font-mono hover:border-[#94A3B8] transition-colors focus:outline-none shrink-0"
                                     >
                                       {isExpanded ? '−' : '+'}
                                     </button>
@@ -2397,35 +2383,12 @@ export default function Forecasts() {
                                   {fmtINR2(row.pipeline)}
                                 </td>
 
-                                {/* 7. Anomalies */}
-                                <td className="py-2.5 px-3 align-middle whitespace-nowrap">
-                                  {anomalyCount > 0 ? (
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        setAnomalyModal({
-                                          periodLabel: bounds.shortLabel,
-                                          forecastName: forecast.name,
-                                          anomalies: row.anomalies,
-                                        })
-                                      }
-                                      aria-label={`Inspect ${anomalyCount} rule-based anomalies in ${bounds.shortLabel}`}
-                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-[#FEF3F2] text-[#B42318] border border-[#FECDCA] hover:bg-[#FEE4E2] transition-colors"
-                                    >
-                                      <AlertTriangle size={11} className="text-[#D92D20] shrink-0" />
-                                      <span>{anomalyCount} Flagged</span>
-                                    </button>
-                                  ) : (
-                                    <span className="text-[#9CA3AF]">-</span>
-                                  )}
-                                </td>
-
-                                {/* 8. Committed */}
+                                {/* 7. Committed */}
                                 <td className="py-2.5 px-3 align-middle whitespace-nowrap text-[#1F2937]">
                                   {fmtINR2(row.committed)}
                                 </td>
 
-                                {/* 9. Best Case */}
+                                {/* 8. Best Case */}
                                 <td className="py-2.5 px-3 align-middle whitespace-nowrap text-[#1F2937]">
                                   {fmtINR2(row.bestCase)}
                                 </td>
@@ -2434,7 +2397,7 @@ export default function Forecasts() {
                               {/* Expanded Contributing Teams, Members & Deals View */}
                               {isExpanded && (
                                 <tr className="bg-[#F8FAFC]">
-                                  <td colSpan={9} className="p-4 border-b border-[#E5E7EB]">
+                                  <td colSpan={8} className="p-4 border-b border-[#E5E7EB]">
                                     {renderExpandedPeriodDetails(row)}
                                   </td>
                                 </tr>
@@ -3048,91 +3011,6 @@ export default function Forecasts() {
         </Modal>
       )}
 
-      {/* Rule-Based Anomaly Inspector Modal (NOT AI Predictions) */}
-      <Modal
-        open={!!anomalyModal}
-        onClose={() => setAnomalyModal(null)}
-        title={`Rule-Based Anomaly Checks — ${anomalyModal?.periodLabel || ''}`}
-        subtitle="Deals flagged based on deterministic CRM rules (e.g. overdue closing dates while still open, or category mismatch)."
-        size="lg"
-        footer={
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => setAnomalyModal(null)}
-          >
-            Close Inspector
-          </button>
-        }
-      >
-        {anomalyModal && (
-          <div className="space-y-3">
-            <div className="p-3 rounded-lg bg-[#FFFBEB] border border-[#FDE68A] text-[12.5px] text-[#92400E] flex items-start gap-2">
-              <ShieldAlert size={16} className="shrink-0 mt-0.5 text-[#D97706]" />
-              <div>
-                <strong>Deterministic Rule Checks (Not AI Predictions):</strong> Deals below are flagged because their{' '}
-                <code>closingDate</code> is earlier than today ({today}) while open, or required fields need attention.
-              </div>
-            </div>
-
-            <div className="divide-y divide-line border border-line rounded-lg overflow-hidden">
-              {anomalyModal.anomalies.map(({ deal, reasons }) => (
-                <div key={deal.id} className="p-3.5 bg-white hover:bg-page/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Link
-                        to={`/deals?open=${deal.id}`}
-                        onClick={() => setAnomalyModal(null)}
-                        className="text-[13.5px] font-semibold text-primary hover:underline inline-flex items-center gap-1"
-                      >
-                        <span>{deal.name}</span>
-                        <ExternalLink size={12} />
-                      </Link>
-                      <StatusBadge kind="stage" value={deal.stage} size="sm" />
-                      <CategoryBadge category={getDealForecastCategory(deal)} />
-                      <span className="text-[13px] font-semibold text-ink">
-                        {fmtINR2(deal.amount)}
-                      </span>
-                    </div>
-                    <div className="text-[11.5px] text-ink-500">
-                      Owner: <strong>{userName(deal.ownerId)}</strong> · Account: <strong>{accountName(deal.accountId)}</strong> · Closing Date: <strong>{fmtDate(deal.closingDate)}</strong>
-                    </div>
-                    <ul className="space-y-0.5 pt-1">
-                      {reasons.map((r) => (
-                        <li key={r.code} className="text-[11.5px] text-[#B42318] flex items-center gap-1 font-medium">
-                          <AlertTriangle size={11} className="text-[#D92D20] shrink-0" />
-                          <span>
-                            <strong>{r.label}:</strong> {r.detail}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const d = deal;
-                        setAnomalyModal(null);
-                        setDealEditModal({
-                          ...d,
-                          forecastCategory: getDealForecastCategory(d),
-                        });
-                      }}
-                      className="btn-secondary h-7 px-2.5 text-[12px]"
-                    >
-                      <Pencil size={12} />
-                      Quick Fix Deal
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </Modal>
-
       {/* Inline Quick Deal Edit Modal (to test live recalculations) */}
       <Modal
         open={!!dealEditModal}
@@ -3300,9 +3178,6 @@ export default function Forecasts() {
             </li>
             <li>
               <strong>Hierarchy Target Rules:</strong> Parent targets (Company and Role/Team) automatically sum their children&apos;s targets unless manually overridden, preventing accidental double counting.
-            </li>
-            <li>
-              <strong>Anomalies (Rule-Based Checks):</strong> Deterministic validation rules flag open deals with past closing dates, missing amounts, or probability/category mismatches.
             </li>
           </ul>
         </div>

@@ -4,9 +4,11 @@ import { clearAll, loadKey, saveKey } from '../utils/storage';
 import { fmtINR, todayISO } from '../utils/calculations';
 import { COLLECTION_MODULE, recordLabel, runWorkflows } from '../workflows/workflowEngine';
 import { useToast } from '../components/common/Toast';
+import { DEFAULT_ACCOUNT_SPLIT_VIEWS, DEFAULT_CONTACT_SPLIT_VIEWS } from '../components/common/SplitView';
+import { buildSeedReports, DEFAULT_REPORT_FOLDERS } from '../utils/reportsEngine';
 
-const KEYS = ['accounts', 'contacts', 'deals', 'calls', 'invoices', 'forecasts', 'myJobs', 'myJobsLogs', 'contactRelations', 'savedContactViews', 'accountRelations', 'savedAccountViews', 'oldDeals', 'baselines', 'workflows', 'notifications', 'tasks', 'activity', 'workflowHistory'];
-const PREFIX = { accounts: 'acc', contacts: 'con', deals: 'deal', calls: 'call', invoices: 'inv', forecasts: 'fc', myJobs: 'job' };
+const KEYS = ['accounts', 'contacts', 'deals', 'calls', 'invoices', 'forecasts', 'myJobs', 'myJobsLogs', 'contactRelations', 'savedContactViews', 'savedContactSplitViews', 'accountRelations', 'savedAccountViews', 'savedAccountSplitViews', 'oldDeals', 'baselines', 'workflows', 'notifications', 'tasks', 'activity', 'workflowHistory', 'reports', 'reportFolders'];
+const PREFIX = { accounts: 'acc', contacts: 'con', deals: 'deal', calls: 'call', invoices: 'inv', forecasts: 'fc', myJobs: 'job', reports: 'rep' };
 const CAP = 500;
 
 const FIELD_LABELS = {
@@ -97,6 +99,10 @@ function freshSeed() {
   const seed = buildSeed();
   const today = todayISO();
   seed.contacts = seed.contacts.map((c) => (c.followUp === '__today__' ? { ...c, followUp: today } : c));
+  seed.savedContactSplitViews = DEFAULT_CONTACT_SPLIT_VIEWS;
+  seed.savedAccountSplitViews = DEFAULT_ACCOUNT_SPLIT_VIEWS;
+  seed.reports = buildSeedReports();
+  seed.reportFolders = DEFAULT_REPORT_FOLDERS;
   return seed;
 }
 
@@ -116,6 +122,18 @@ function loadAll() {
   if (missing) {
     const fresh = freshSeed();
     KEYS.forEach((k) => { if (seed[k] === undefined) seed[k] = fresh[k]; });
+  }
+  if (!Array.isArray(seed.savedContactSplitViews) || seed.savedContactSplitViews.length === 0) {
+    seed.savedContactSplitViews = DEFAULT_CONTACT_SPLIT_VIEWS;
+  }
+  if (!Array.isArray(seed.savedAccountSplitViews) || seed.savedAccountSplitViews.length === 0) {
+    seed.savedAccountSplitViews = DEFAULT_ACCOUNT_SPLIT_VIEWS;
+  }
+  if (!Array.isArray(seed.reports) || seed.reports.length === 0) {
+    seed.reports = buildSeedReports();
+  }
+  if (!Array.isArray(seed.reportFolders) || seed.reportFolders.length === 0) {
+    seed.reportFolders = DEFAULT_REPORT_FOLDERS;
   }
   // Ensure default Account & Contact workflows and seeded timeline entries exist even if localStorage was initialized earlier
   const defaultWfs = seedWorkflows();
@@ -484,6 +502,65 @@ export function CRMProvider({ children }) {
     }));
   }, []);
 
+  // ---- Saved Contact & Account Split Views ----
+  const saveContactSplitView = useCallback((viewData) => {
+    const id = viewData.id || `csplit-${Date.now().toString(36)}`;
+    const record = { ...viewData, id, updatedAt: new Date().toISOString() };
+    setDb((d) => {
+      const existing = d.savedContactSplitViews || DEFAULT_CONTACT_SPLIT_VIEWS;
+      const exists = existing.some((v) => v.id === id);
+      const next = {
+        ...d,
+        savedContactSplitViews: exists
+          ? existing.map((v) => (v.id === id ? record : v))
+          : [...existing, record],
+      };
+      dbRef.current = next;
+      return next;
+    });
+    return record;
+  }, []);
+
+  const deleteContactSplitView = useCallback((id) => {
+    setDb((d) => {
+      const next = {
+        ...d,
+        savedContactSplitViews: (d.savedContactSplitViews || DEFAULT_CONTACT_SPLIT_VIEWS).filter((v) => v.id !== id),
+      };
+      dbRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const saveAccountSplitView = useCallback((viewData) => {
+    const id = viewData.id || `asplit-${Date.now().toString(36)}`;
+    const record = { ...viewData, id, updatedAt: new Date().toISOString() };
+    setDb((d) => {
+      const existing = d.savedAccountSplitViews || DEFAULT_ACCOUNT_SPLIT_VIEWS;
+      const exists = existing.some((v) => v.id === id);
+      const next = {
+        ...d,
+        savedAccountSplitViews: exists
+          ? existing.map((v) => (v.id === id ? record : v))
+          : [...existing, record],
+      };
+      dbRef.current = next;
+      return next;
+    });
+    return record;
+  }, []);
+
+  const deleteAccountSplitView = useCallback((id) => {
+    setDb((d) => {
+      const next = {
+        ...d,
+        savedAccountSplitViews: (d.savedAccountSplitViews || DEFAULT_ACCOUNT_SPLIT_VIEWS).filter((v) => v.id !== id),
+      };
+      dbRef.current = next;
+      return next;
+    });
+  }, []);
+
   const addAccountRelatedRecord = useCallback((moduleKey, item) => {
     const now = todayISO();
     const nowIso = new Date().toISOString();
@@ -644,6 +721,159 @@ export function CRMProvider({ children }) {
     return { account, reusedExistingAccount: Boolean(existingAcc), contact, deal, convertedLeadEntry };
   }, []);
 
+  const saveReport = useCallback((reportData) => {
+    const now = new Date();
+    const dd = String(now.getDate()).padStart(2, '0');
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const yyyy = now.getFullYear();
+    const todayFormatted = `${dd}/${mm}/${yyyy}`;
+
+    const id = reportData.id || newId('reports');
+    const record = {
+      id,
+      name: String(reportData.name || 'Untitled Report').trim(),
+      description: String(reportData.description || '-').trim() || '-',
+      folder: String(reportData.folder || 'Overall').trim() || 'Overall',
+      lastAccessedDate: reportData.lastAccessedDate || todayFormatted,
+      createdBy: reportData.createdBy || 'Arun Kumar',
+      primaryModule: reportData.primaryModule || 'Deals',
+      relatedModules: Array.isArray(reportData.relatedModules) ? reportData.relatedModules : [],
+      reportType: reportData.reportType || 'tabular',
+      columns: Array.isArray(reportData.columns) ? reportData.columns : [],
+      groupBy: reportData.groupBy || '',
+      secondaryGroupBy: reportData.secondaryGroupBy || '',
+      groupSort: reportData.groupSort || 'asc',
+      summaries: Array.isArray(reportData.summaries) ? reportData.summaries : [],
+      filterJoin: reportData.filterJoin || 'AND',
+      filters: Array.isArray(reportData.filters) ? reportData.filters : [],
+      visibility: reportData.visibility || 'Everyone',
+      sharedUserIds: Array.isArray(reportData.sharedUserIds) ? reportData.sharedUserIds : [],
+      favorite: Boolean(reportData.favorite),
+      createdAt: reportData.createdAt || now.toISOString(),
+      updatedAt: now.toISOString(),
+    };
+
+    setDb((d) => {
+      const existing = d.reports || [];
+      const exists = existing.some((r) => r.id === id);
+      const next = {
+        ...d,
+        reports: exists ? existing.map((r) => (r.id === id ? record : r)) : [record, ...existing],
+      };
+      dbRef.current = next;
+      return next;
+    });
+    return record;
+  }, []);
+
+  const deleteReports = useCallback((ids) => {
+    const idSet = new Set(Array.isArray(ids) ? ids : [ids]);
+    setDb((d) => {
+      const next = {
+        ...d,
+        reports: (d.reports || []).filter((r) => !idSet.has(r.id)),
+      };
+      dbRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const duplicateReport = useCallback((id) => {
+    const orig = (dbRef.current.reports || []).find((r) => r.id === id);
+    if (!orig) return null;
+    const now = new Date();
+    const dd = String(now.getDate()).padStart(2, '0');
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const yyyy = now.getFullYear();
+    const copy = {
+      ...orig,
+      id: newId('reports'),
+      name: `${orig.name} (Copy)`,
+      lastAccessedDate: `${dd}/${mm}/${yyyy}`,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    };
+    setDb((d) => {
+      const next = {
+        ...d,
+        reports: [copy, ...(d.reports || [])],
+      };
+      dbRef.current = next;
+      return next;
+    });
+    return copy;
+  }, []);
+
+  const toggleFavoriteReport = useCallback((id) => {
+    setDb((d) => {
+      const next = {
+        ...d,
+        reports: (d.reports || []).map((r) => (r.id === id ? { ...r, favorite: !r.favorite } : r)),
+      };
+      dbRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const markReportAccessed = useCallback((id) => {
+    const now = new Date();
+    const dd = String(now.getDate()).padStart(2, '0');
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const yyyy = now.getFullYear();
+    const todayFormatted = `${dd}/${mm}/${yyyy}`;
+    setDb((d) => {
+      const next = {
+        ...d,
+        reports: (d.reports || []).map((r) =>
+          r.id === id ? { ...r, lastAccessedDate: todayFormatted } : r
+        ),
+      };
+      dbRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const saveReportFolder = useCallback((folderData) => {
+    const cleanName = String(folderData.name || '').trim();
+    if (!cleanName) return null;
+    const id = folderData.id || `fld-${Date.now().toString(36)}`;
+    const record = {
+      id,
+      name: cleanName,
+      description: String(folderData.description || '').trim(),
+      system: Boolean(folderData.system),
+    };
+    setDb((d) => {
+      const existing = d.reportFolders || DEFAULT_REPORT_FOLDERS;
+      const exists = existing.some((f) => f.id === id || f.name.toLowerCase() === cleanName.toLowerCase());
+      const next = {
+        ...d,
+        reportFolders: exists
+          ? existing.map((f) => (f.id === id || f.name.toLowerCase() === cleanName.toLowerCase() ? { ...f, ...record } : f))
+          : [...existing, record],
+      };
+      dbRef.current = next;
+      return next;
+    });
+    return record;
+  }, []);
+
+  const deleteReportFolder = useCallback((folderName) => {
+    setDb((d) => {
+      const next = {
+        ...d,
+        reportFolders: (d.reportFolders || DEFAULT_REPORT_FOLDERS).filter(
+          (f) => f.name !== folderName || f.system
+        ),
+        reports: (d.reports || []).map((r) =>
+          r.folder === folderName ? { ...r, folder: 'Overall' } : r
+        ),
+      };
+      dbRef.current = next;
+      return next;
+    });
+  }, []);
+
   const resetDemo = useCallback(() => {
     clearAll();
     setDb(freshSeed());
@@ -662,9 +892,13 @@ export function CRMProvider({ children }) {
     markNotification, markAllRead, clearNotifications, updateTask, deleteTask,
     processMyJobAction,
     saveContactView, renameContactView, deleteContactView, addContactRelatedRecord,
+    saveContactSplitView, deleteContactSplitView,
     saveAccountView, renameAccountView, deleteAccountView, addAccountRelatedRecord, convertLeadToAccount,
+    saveAccountSplitView, deleteAccountSplitView,
+    saveReport, deleteReports, duplicateReport, toggleFavoriteReport, markReportAccessed,
+    saveReportFolder, deleteReportFolder,
     resetDemo, reload,
-  }), [db, lookups, createRecord, updateRecord, deleteRecord, deleteRecords, saveWorkflow, deleteWorkflow, toggleWorkflow, runRecordWorkflowsNow, markNotification, markAllRead, clearNotifications, updateTask, deleteTask, processMyJobAction, saveContactView, renameContactView, deleteContactView, addContactRelatedRecord, saveAccountView, renameAccountView, deleteAccountView, addAccountRelatedRecord, convertLeadToAccount, resetDemo, reload]);
+  }), [db, lookups, createRecord, updateRecord, deleteRecord, deleteRecords, saveWorkflow, deleteWorkflow, toggleWorkflow, runRecordWorkflowsNow, markNotification, markAllRead, clearNotifications, updateTask, deleteTask, processMyJobAction, saveContactView, renameContactView, deleteContactView, addContactRelatedRecord, saveContactSplitView, deleteContactSplitView, saveAccountView, renameAccountView, deleteAccountView, addAccountRelatedRecord, convertLeadToAccount, saveAccountSplitView, deleteAccountSplitView, saveReport, deleteReports, duplicateReport, toggleFavoriteReport, markReportAccessed, saveReportFolder, deleteReportFolder, resetDemo, reload]);
 
   return <CRMContext.Provider value={value}>{children}</CRMContext.Provider>;
 }

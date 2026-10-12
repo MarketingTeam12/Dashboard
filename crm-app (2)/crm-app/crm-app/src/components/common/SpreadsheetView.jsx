@@ -5,6 +5,7 @@ import {
   Download, ExternalLink, Eye, FileSpreadsheet, Phone, Plus,
   RotateCcw, Sparkles, Trash2, Upload, X,
 } from 'lucide-react';
+import { RecordSelectionSummary } from './Pagination';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const PHONE_RE = /^[+\d][\d\s\-()+]{6,22}$/;
@@ -814,11 +815,15 @@ export default function SpreadsheetView({
 
       {/* ==================== SPREADSHEET FOOTER & PAGINATION ==================== */}
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 border-t border-[#DCE3EE] bg-[#FAFBFD] text-[12.5px] text-[#475569]">
-        <div className="flex items-center gap-3">
-          <div>
-            <span className="font-medium text-[#64748B]">Total Records:</span>{' '}
-            <span className="font-bold text-[#0F172A] font-mono">{totalFilteredCount}</span>
-          </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <RecordSelectionSummary
+            total={totalFilteredCount}
+            selectedCount={table?.selected ? table.selected.size : 0}
+            onClearSelection={table?.clearSelection}
+            totalTestId="spreadsheet-total-records"
+            selectionTestId="spreadsheet-selected-count"
+            deselectTestId="spreadsheet-deselect-all-btn"
+          />
           <span className="text-[#CBD5E1]">|</span>
           <button
             type="button"

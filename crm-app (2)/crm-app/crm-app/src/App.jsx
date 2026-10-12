@@ -10,12 +10,15 @@ import StageSummaryPercentage from './pages/StageSummaryPercentage/StageSummaryP
 import StageSummaryOldData from './pages/StageSummaryOldData/StageSummaryOldData';
 import ZohoFinance from './pages/ZohoFinance/ZohoFinance';
 import WorkflowBuilder from './pages/WorkflowBuilder/WorkflowBuilder';
+import Reports from './pages/Reports/Reports';
 
 export default function App() {
   return (
     <Routes>
       <Route element={<MainLayout />}>
         <Route index element={<Navigate to="/contacts" replace />} />
+        <Route path="/reports" element={<Reports />} />
+        <Route path="/reports/:reportId" element={<Reports />} />
         <Route path="/contacts" element={<Contacts />} />
         <Route path="/contacts/create" element={<Contacts isCreatePage={true} />} />
         <Route path="/contacts/new" element={<Contacts isCreatePage={true} />} />

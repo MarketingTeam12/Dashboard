@@ -154,7 +154,7 @@ export function buildSeed() {
 
   // ---------------- Contacts ----------------
   const namedContacts = [
-    ['Priya Sharma', 'Marketing Manager', 'Acme Technologies', 'priya.sharma@acmetech.in', '+91 98765 43210', 'New', 'Website', 'u1', '2026-10-10', '2026-10-07'],
+    ['Virat Kohli', 'Marketing Manager', 'Acme Technologies', 'virat18@cricket.in', '+91 98765 43210', 'New', 'Website', 'u1', '2026-10-10', '2026-10-07'],
     ['Rahul Menon', 'Sales Executive', 'Zenith Textiles', 'rahul.menon@zenith.in', '+91 98765 67890', 'Contacted', 'LinkedIn', 'u2', '2026-10-08', '2026-10-09'],
     ['Karthik Raja', 'Project Manager', 'Innovate Labs', 'karthik.raja@innovatelabs.in', '+91 98765 22334', 'Engaged', 'Cold Call', 'u1', '2026-10-10', 'today'],
     ['Divya Nair', 'Business Analyst', 'NextGen Solutions', 'divya.nair@nextgen.in', '+91 98765 77665', 'Qualified', 'Website', 'u2', '2026-10-12', '2026-10-09'],

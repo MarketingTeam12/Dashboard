@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
-  Bell, Building2, CalendarDays, CheckCheck, ChevronDown, CircleDollarSign, Download, Grip, Menu, Phone, Plus, Receipt,
+  Bell, Building2, CalendarDays, CheckCheck, ChevronDown, CircleDollarSign, Download, Grip, LineChart, Menu, Phone, Plus, Receipt,
   RotateCcw, Search, Settings, Sparkles, Store, Trash2, TrendingUp, Users, Workflow,
 } from 'lucide-react';
 import { useCRM } from '../../context/CRMContext';
@@ -16,13 +16,14 @@ import { balanceOf, fmtCompact, fmtDate, fmtTime, isOpen, isWon, isLost, pctLabe
 const iconBtn = 'relative h-9 w-9 rounded-lg flex items-center justify-center text-ink-600 hover:bg-page';
 
 function useSearchResults(q) {
-  const { contacts, accounts, deals, calls, invoices, forecasts = [], accountName } = useCRM();
+  const { contacts, accounts, deals, calls, invoices, forecasts = [], reports = [], accountName } = useCRM();
   return useMemo(() => {
     const s = q.trim().toLowerCase();
     if (s.length < 2) return [];
     const has = (...v) => v.some((x) => String(x || '').toLowerCase().includes(s));
     const take = (arr) => arr.slice(0, 4);
     return [
+      { group: 'Reports', icon: LineChart, path: '/reports', items: take(reports.filter((r) => has(r.name, r.description, r.folder, r.primaryModule))).map((r) => ({ id: r.id, title: r.name, sub: `${r.folder} · ${r.primaryModule}` })) },
       { group: 'Contacts', icon: Users, path: '/contacts', items: take(contacts.filter((c) => has(c.name, c.email, c.phone))).map((c) => ({ id: c.id, title: c.name, sub: `${c.designation} · ${accountName(c.accountId)}` })) },
       { group: 'Accounts', icon: Building2, path: '/accounts', items: take(accounts.filter((a) => has(a.name, a.industry, a.location))).map((a) => ({ id: a.id, title: a.name, sub: `${a.industry} · ${a.location}` })) },
       { group: 'Deals', icon: CircleDollarSign, path: '/deals', items: take(deals.filter((d) => has(d.name))).map((d) => ({ id: d.id, title: d.name, sub: `${d.stage} · ${accountName(d.accountId)}` })) },
@@ -30,7 +31,7 @@ function useSearchResults(q) {
       { group: 'Forecasts', icon: TrendingUp, path: '/forecasts', items: take(forecasts.filter((f) => has(f.name, f.periodKey, f.year))).map((f) => ({ id: f.id, title: f.name, sub: `${f.periodKey} ${f.year} · ${f.periodType}` })) },
       { group: 'Invoices', icon: Receipt, path: '/zoho-finance', items: take(invoices.filter((i) => has(i.number, accountName(i.accountId)))).map((i) => ({ id: i.id, title: i.number, sub: `${i.status} · ${accountName(i.accountId)}` })) },
     ].filter((g) => g.items.length);
-  }, [q, contacts, accounts, deals, calls, invoices, forecasts, accountName]);
+  }, [q, contacts, accounts, deals, calls, invoices, forecasts, reports, accountName]);
 }
 
 function GlobalSearch({ autoFocus, onDone }) {
@@ -149,6 +150,7 @@ export default function Topbar({ onMenu }) {
   };
 
   const createItems = [
+    { label: 'Report', icon: LineChart, path: '/reports?create=1', testId: 'quick-create-report' },
     { label: 'Contact', icon: Users, path: '/contacts/create', testId: 'quick-create-contact' },
     { label: 'Account', icon: Building2, path: '/accounts/create', testId: 'quick-create-account' },
     { label: 'Deal', icon: CircleDollarSign, path: '/deals?create=1', testId: 'quick-create-deal' },
@@ -159,12 +161,12 @@ export default function Topbar({ onMenu }) {
   ];
 
   return (
-    <header className="sticky top-0 z-30 h-[60px] bg-white border-b border-line flex items-center gap-1.5 sm:gap-2 px-3 sm:px-[18px]">
+    <header className="sticky top-0 z-40 h-[60px] bg-white border-b border-line flex items-center gap-1.5 sm:gap-2 px-3 sm:px-[18px]">
       <button className={`${iconBtn} lg:hidden -ml-1`} onClick={onMenu} aria-label="Open menu"><Menu size={21} /></button>
-      {location.pathname.startsWith('/contacts') || location.pathname.startsWith('/accounts') ? (
+      {pathname.startsWith('/contacts') || pathname.startsWith('/accounts') ? (
         <div className="flex items-center gap-2.5 min-w-0 flex-1 xl:flex-none">
           <span className="text-[18px] sm:text-[20px] font-semibold text-ink tracking-tight">
-            {location.pathname.startsWith('/contacts') ? 'Contacts' : 'Accounts'}
+            {pathname.startsWith('/contacts') ? 'Contacts' : 'Accounts'}
           </span>
           <div className="relative">
             <select

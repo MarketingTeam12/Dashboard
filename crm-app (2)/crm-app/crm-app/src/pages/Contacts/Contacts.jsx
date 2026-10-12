@@ -10,12 +10,15 @@ import {
 import CreateContact from './CreateContact';
 import ContactDetail from './ContactDetail';
 import RecordTimeline from '../../components/common/RecordTimeline';
+import WhatsAppComposerModal, { WhatsAppIcon } from '../../components/common/WhatsAppComposerModal';
 import CSVImportModal from '../../components/common/CSVImportModal';
 import SpreadsheetView, { formatScreenshotDateTime } from '../../components/common/SpreadsheetView';
+import SplitView from '../../components/common/SplitView';
+import ModuleTimelineView from '../../components/common/ModuleTimelineView';
 import { useCRM } from '../../context/CRMContext';
-import PageHeader from '../../components/common/PageHeader';
-import DataTable from '../../components/common/DataTable';
-import Pagination from '../../components/common/Pagination';
+import PageHeader, { useHeaderBarMode } from '../../components/common/PageHeader';
+import DataTable, { ColumnChooserMenu, useColumnLayout } from '../../components/common/DataTable';
+import Pagination, { RecordSelectionSummary } from '../../components/common/Pagination';
 import useTable from '../../components/common/useTable';
 import StatusBadge from '../../components/common/StatusBadge';
 import { PersonAvatar, UserAvatar } from '../../components/common/Avatar';
@@ -25,7 +28,7 @@ import { Drawer, DetailGrid, SectionTitle } from '../../components/common/Modal'
 import Modal from '../../components/common/Modal';
 import Dropdown, { MenuDivider, MenuItem, MenuLabel } from '../../components/common/Dropdown';
 import BulkBar, { BulkButton } from '../../components/common/BulkBar';
-import { ChartView, GridView, KanbanView } from '../../components/common/Views';
+import { ChartView, GridStatusPill, GridView, KanbanView } from '../../components/common/Views';
 import { useRefresh } from '../../components/common/hooks';
 import { useToast } from '../../components/common/Toast';
 import { LEAD_SOURCES, LIFECYCLES, SALUTATIONS, VENDORS } from '../../data/seedData';
@@ -127,6 +130,7 @@ export default function Contacts({ isCreatePage = false }) {
     users,
     contactRelations = {},
     savedContactViews = [],
+    savedContactSplitViews = [],
     accountsById,
     usersById,
     contactsById,
@@ -138,6 +142,8 @@ export default function Contacts({ isCreatePage = false }) {
     saveContactView,
     renameContactView,
     deleteContactView,
+    saveContactSplitView,
+    deleteContactSplitView,
     addContactRelatedRecord,
   } = crm;
 
@@ -167,6 +173,7 @@ export default function Contacts({ isCreatePage = false }) {
   const [layout, setLayout] = useState(() => persisted?.layout || 'list');
   const [dense, setDense] = useState(true);
   const [panelOpen, setPanelOpen] = useState(true);
+  const [headerMode, setHeaderMode] = useHeaderBarMode('contacts', 'fixed');
 
   // Search & popover controls:
   // 1. filterSearch searches filter headings in left sidebar
@@ -202,8 +209,42 @@ export default function Contacts({ isCreatePage = false }) {
   const [enforcePermissions, setEnforcePermissions] = useState(false);
 
   // Modals & Drawers - default hidden columns leaves the 9 Screenshot 1 columns visible
-  const [hidden, setHidden] = useState(
-    () => new Set(['account', 'name', 'phone', 'lifecycle', 'department', 'lastContacted', 'followUp', 'vendorName'])
+  const CONTACT_COLUMN_CATALOG = useMemo(
+    () => [
+      { key: 'createdTime', label: 'Created Time', width: 175 },
+      { key: 'owner', label: 'Contact Owner', width: 150 },
+      { key: 'firstName', label: 'First Name', width: 130 },
+      { key: 'lastName', label: 'Last Name', width: 130 },
+      { key: 'mobile', label: 'Mobile', width: 140 },
+      { key: 'email', label: 'Email', width: 200 },
+      { key: 'leadSource', label: 'Lead Source', width: 130 },
+      { key: 'leadManager1', label: 'Lead Manager 1', width: 155 },
+      { key: 'city', label: 'City', width: 130 },
+      { key: 'account', label: 'Account Name', width: 170 },
+      { key: 'name', label: 'Full Contact Name', width: 200 },
+      { key: 'phone', label: 'Phone', width: 140 },
+      { key: 'lifecycle', label: 'Lifecycle Stage', width: 130 },
+      { key: 'department', label: 'Department', width: 130 },
+      { key: 'lastContacted', label: 'Last Contacted', width: 140 },
+      { key: 'followUp', label: 'Follow-up Indicator', width: 90 },
+      { key: 'vendorName', label: 'Vendor Name', width: 140 },
+    ],
+    []
+  );
+  const {
+    order: columnOrder,
+    hidden,
+    widths: columnWidths,
+    toggleColumn,
+    reorderColumns,
+    moveColumnByOffset,
+    setColumnWidth,
+    resetColumns,
+  } = useColumnLayout(
+    'list-contacts',
+    CONTACT_COLUMN_CATALOG.map((c) => c.key),
+    ['account', 'name', 'phone', 'lifecycle', 'department', 'lastContacted', 'followUp', 'vendorName'],
+    Object.fromEntries(CONTACT_COLUMN_CATALOG.map((c) => [c.key, c.width]))
   );
   const [contactModal, setContactModal] = useState(null); // { mode: 'create'|'edit', record }
   const [viewingId, setViewingId] = useState(null);
@@ -215,6 +256,7 @@ export default function Contacts({ isCreatePage = false }) {
   const [builderOpen, setBuilderOpen] = useState(false);
   const [saveViewModal, setSaveViewModal] = useState(null); // { mode: 'create'|'rename', id?, name: '' }
   const [composeEmail, setComposeEmail] = useState(null); // { contact, subject: '', body: '' }
+  const [whatsappContact, setWhatsappContact] = useState(null);
   const [noteText, setNoteText] = useState('');
   const [csvImportOpen, setCsvImportOpen] = useState(false);
 
@@ -957,6 +999,7 @@ export default function Contacts({ isCreatePage = false }) {
     { label: 'View details', icon: Eye, onClick: () => openContactDetail(c.id) },
     { label: 'Edit contact', icon: Pencil, onClick: () => openEditModal(c) },
     { label: 'Send email', icon: Mail, onClick: () => setComposeEmail({ contact: c, subject: `Following up with ${accountName(c.accountId)}`, body: `Hi ${c.firstName || c.name},\n\nFollowing up regarding our recent conversation.\n\nBest regards,\n${activeUser.name}` }) },
+    { label: 'Send WhatsApp', icon: WhatsAppIcon, onClick: () => setWhatsappContact(c) },
     { label: 'Log a call', icon: Phone, onClick: () => navigate(`/calls?create=1&contact=${c.id}`) },
     {
       label: c.followUp ? 'Clear follow-up' : 'Follow up tomorrow',
@@ -1195,7 +1238,13 @@ export default function Contacts({ isCreatePage = false }) {
       width: 140,
       render: (c) => <span className="text-[12.5px]">{c.vendorName || '—'}</span>,
     },
-  ].filter((c) => !hidden.has(c.key));
+  ]
+    .sort((a, b) => {
+      const idxA = columnOrder.indexOf(a.key);
+      const idxB = columnOrder.indexOf(b.key);
+      return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
+    })
+    .filter((c) => !hidden.has(c.key));
 
   // ==================== EXCEL-STYLE SPREADSHEET COLUMNS & HANDLERS ====================
   const spreadsheetColumns = useMemo(
@@ -1528,56 +1577,15 @@ export default function Contacts({ isCreatePage = false }) {
   };
 
   const columnChooser = (
-    <Dropdown
-      width={240}
-      align="right"
-      trigger={
-        <button
-          type="button"
-          aria-label="Choose columns"
-          className="p-1.5 rounded-md text-ink-600 hover:bg-white hover:text-primary"
-        >
-          <SlidersHorizontal size={16} />
-        </button>
-      }
-    >
-      <MenuLabel>Visible columns</MenuLabel>
-      {[
-        ['createdTime', 'Created Time'],
-        ['owner', 'Contact Owner'],
-        ['firstName', 'First Name'],
-        ['lastName', 'Last Name'],
-        ['mobile', 'Mobile'],
-        ['email', 'Email'],
-        ['leadSource', 'Lead Source'],
-        ['leadManager1', 'Lead Manager 1'],
-        ['city', 'City'],
-        ['account', 'Account Name'],
-        ['name', 'Full Contact Name'],
-        ['phone', 'Phone'],
-        ['lifecycle', 'Lifecycle Stage'],
-        ['department', 'Department'],
-        ['lastContacted', 'Last Contacted'],
-        ['followUp', 'Follow-up Indicator'],
-        ['vendorName', 'Vendor Name'],
-      ].map(([k, l]) => (
-        <label key={k} className="flex items-center gap-2.5 px-3 py-1.5 text-[12.5px] text-ink hover:bg-page cursor-pointer">
-          <input
-            type="checkbox"
-            className="cb"
-            checked={!hidden.has(k)}
-            onChange={() =>
-              setHidden((h) => {
-                const n = new Set(h);
-                n.has(k) ? n.delete(k) : n.add(k);
-                return n;
-              })
-            }
-          />
-          {l}
-        </label>
-      ))}
-    </Dropdown>
+    <ColumnChooserMenu
+      allColumns={CONTACT_COLUMN_CATALOG}
+      columnOrder={columnOrder}
+      hiddenSet={hidden}
+      onToggleColumn={toggleColumn}
+      onReorderColumns={reorderColumns}
+      onMoveColumn={moveColumnByOffset}
+      onResetColumns={resetColumns}
+    />
   );
 
   const columns = [
@@ -1659,6 +1667,8 @@ export default function Contacts({ isCreatePage = false }) {
         views={allViews}
         view={savedView}
         onViewChange={handleSelectView}
+        headerMode={headerMode}
+        onHeaderModeChange={setHeaderMode}
         tabMenu={[
           {
             label: 'Save current filters as view',
@@ -1702,7 +1712,7 @@ export default function Contacts({ isCreatePage = false }) {
           ],
           sort: table.sort,
           onSort: table.setSort,
-          layouts: ['list', 'spreadsheet', 'kanban', 'grid', 'chart'],
+          layouts: ['list', 'spreadsheet', 'kanban', 'grid', 'split', 'timeline', 'chart'],
           layout,
           onLayout: setLayout,
           onRefresh: refresh,
@@ -2035,7 +2045,11 @@ export default function Contacts({ isCreatePage = false }) {
             />
             <aside
               aria-label="Filter Contacts by"
-              className="fixed inset-y-0 left-0 z-50 w-[290px] max-w-[85vw] bg-white shadow-2xl p-4 overflow-y-auto thin-scroll lg:static lg:z-auto lg:w-[228px] lg:shadow-none lg:card lg:shrink-0 lg:px-3 lg:py-3.5 lg:sticky lg:top-[72px] lg:max-h-[calc(100vh-92px)]"
+              className={`fixed inset-y-0 left-0 z-50 w-[290px] max-w-[85vw] bg-white shadow-2xl p-4 overflow-y-auto thin-scroll lg:static lg:z-auto lg:w-[228px] lg:shadow-none lg:card lg:shrink-0 lg:px-3 lg:py-3.5 lg:sticky ${
+                headerMode === 'fixed'
+                  ? 'lg:top-[184px] lg:max-h-[calc(100vh-196px)]'
+                  : 'lg:top-[72px] lg:max-h-[calc(100vh-92px)]'
+              }`}
             >
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-[14.5px] font-semibold text-ink">Filter Contacts by</h2>
@@ -2575,6 +2589,11 @@ export default function Contacts({ isCreatePage = false }) {
                 loading={refreshing}
                 dense={dense}
                 minWidth={1020}
+                columnWidths={columnWidths}
+                onReorderColumns={reorderColumns}
+                onMoveColumn={moveColumnByOffset}
+                onResizeColumn={setColumnWidth}
+                stickyColumnKey="firstName"
                 emptyTitle={activeFilterCount > 0 ? "No records match these filters" : "No contacts found"}
                 emptyHint={activeFilterCount > 0 ? "Try adjusting your filter criteria, switching conjunction logic (AND / OR), or clearing the search query." : "Get started by adding your first contact to Honey One CRM."}
                 emptyAction={
@@ -2591,13 +2610,20 @@ export default function Contacts({ isCreatePage = false }) {
                   </div>
                 }
               />
-              <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-line bg-white text-[12.5px] text-ink-600">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-ink-500">Total Records</span>
-                  <span className="font-bold text-ink font-mono text-[13px]">{filtered.length}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1.5 text-[12px] mr-2">
+              <div
+                data-testid="contacts-footer-bar"
+                className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-line bg-white text-[12.5px] text-ink-600"
+              >
+                <RecordSelectionSummary
+                  total={filtered.length}
+                  selectedCount={table.selected.size}
+                  onClearSelection={table.clearSelection}
+                  totalTestId="contacts-total-count"
+                  selectionTestId="contacts-selected-count"
+                  deselectTestId="contacts-deselect-all-btn"
+                />
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5 text-[12px] mr-1">
                     <span className="text-ink-400">Rows per page:</span>
                     <select
                       value={table.pageSize}
@@ -2613,6 +2639,7 @@ export default function Contacts({ isCreatePage = false }) {
                   <div className="flex items-center gap-1 font-medium">
                     <button
                       type="button"
+                      data-testid="contacts-prev-page"
                       disabled={table.page <= 1}
                       onClick={() => table.setPage(table.page - 1)}
                       className="w-7 h-7 rounded border border-line flex items-center justify-center text-ink hover:bg-page disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-[13px]"
@@ -2620,13 +2647,39 @@ export default function Contacts({ isCreatePage = false }) {
                     >
                       ‹
                     </button>
-                    <span className="px-2.5 py-0.5 text-[12px] font-medium text-ink-700">
+                    {(() => {
+                      const maxP = Math.max(1, Math.ceil(filtered.length / table.pageSize));
+                      const cnt = Math.min(5, maxP);
+                      let startP = Math.max(1, table.page - 2);
+                      startP = Math.min(startP, maxP - cnt + 1);
+                      return Array.from({ length: cnt }, (_, idx) => startP + idx).map((p) => (
+                        <button
+                          key={p}
+                          type="button"
+                          data-testid={`contacts-page-${p}`}
+                          onClick={() => table.setPage(p)}
+                          aria-current={p === table.page ? 'page' : undefined}
+                          className={`min-w-7 h-7 px-1.5 rounded border text-[12px] flex items-center justify-center transition-colors ${
+                            p === table.page
+                              ? 'bg-primary border-primary text-white font-semibold'
+                              : 'border-line bg-white text-ink hover:bg-page'
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      ));
+                    })()}
+                    <span
+                      data-testid="contacts-page-range"
+                      className="px-2 py-0.5 text-[12px] font-medium text-ink-700 tabular-nums"
+                    >
                       {filtered.length === 0
                         ? '0 to 0'
                         : `${(table.page - 1) * table.pageSize + 1} to ${Math.min(filtered.length, table.page * table.pageSize)}`}
                     </span>
                     <button
                       type="button"
+                      data-testid="contacts-next-page"
                       disabled={table.page >= Math.max(1, Math.ceil(filtered.length / table.pageSize))}
                       onClick={() => table.setPage(table.page + 1)}
                       className="w-7 h-7 rounded border border-line flex items-center justify-center text-ink hover:bg-page disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-[13px]"
@@ -2636,9 +2689,6 @@ export default function Contacts({ isCreatePage = false }) {
                     </button>
                   </div>
                 </div>
-              </div>
-              <div className="hidden">
-                <Pagination table={table} variant="records" options={[10, 25, 50, 100]} />
               </div>
             </>
           )}
@@ -2690,42 +2740,363 @@ export default function Contacts({ isCreatePage = false }) {
           )}
 
           {layout === 'grid' && (
-            <div className="p-3">
-              <GridView
-                rows={table.pageRows}
-                onCardClick={(c) => openContactDetail(c.id)}
-                renderCard={(c) => (
-                  <>
-                    <div className="flex items-center gap-3">
-                      <PersonAvatar name={c.name} size={44} />
-                      <div className="min-w-0">
-                        <div className="font-semibold text-ink truncate">{c.name}</div>
-                        <div className="text-[12.5px] text-ink-500 truncate">{c.designation}</div>
-                      </div>
-                    </div>
-                    <div className="mt-3 space-y-1 text-[12.5px] text-ink-600">
-                      <div className="truncate">{accountName(c.accountId)}</div>
-                      <div className="truncate flex items-center gap-1.5">
-                        <Mail size={13} />
-                        {c.email}
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <Phone size={13} />
-                        {c.phone}
-                      </div>
-                    </div>
-                    <div className="mt-3 flex items-center gap-2">
-                      <StatusBadge kind="lifecycle" value={c.lifecycle} size="sm" />
-                      <StatusBadge kind="leadSource" value={c.leadSource} size="sm" />
-                      <span className="ml-auto">
-                        <UserAvatar userId={c.ownerId} size={24} />
+            <GridView
+              testId="contacts-grid-view"
+              rows={table.pageRows}
+              table={table}
+              totalCount={filtered.length}
+              dense={dense}
+              quickFilterValue={lifecycleQuick}
+              quickFilterOptions={LIFECYCLES}
+              onQuickFilterChange={(v) => {
+                setLifecycleQuick(v);
+                table.setPage(1);
+              }}
+              quickActionLabel="Contact"
+              onQuickAction={() => navigate('/contacts/create')}
+              emptyTitle={activeFilterCount > 0 ? 'No records match these filters' : 'No contacts found'}
+              emptyHint={
+                activeFilterCount > 0
+                  ? 'Try adjusting your filter criteria or clearing the search query.'
+                  : 'Get started by adding your first contact to Honey One CRM.'
+              }
+              emptyAction={
+                <div className="flex items-center gap-2 mt-2">
+                  {activeFilterCount > 0 && (
+                    <button type="button" className="btn-secondary h-9" onClick={clearAllFilters}>
+                      Reset Filters &amp; Search
+                    </button>
+                  )}
+                  <button type="button" className="btn-primary h-9" onClick={() => navigate('/contacts/create')}>
+                    <Plus size={16} />
+                    Create Contact
+                  </button>
+                </div>
+              }
+              columns={[
+                {
+                  key: 'name',
+                  header: 'Contact Name',
+                  minWidth: 195,
+                  sortable: true,
+                  render: (c) => (
+                    <button
+                      type="button"
+                      onClick={() => openContactDetail(c.id)}
+                      data-testid={`grid-contact-name-${c.id}`}
+                      className="font-medium text-[#1E293B] hover:text-[#1262E0] hover:underline text-left truncate block max-w-full cursor-pointer"
+                    >
+                      {c.name}
+                    </button>
+                  ),
+                },
+                {
+                  key: 'lifecycle',
+                  header: 'Contact Status',
+                  minWidth: 155,
+                  sortable: true,
+                  render: (c) => <GridStatusPill value={c.lifecycle || 'New'} />,
+                },
+                {
+                  key: 'account',
+                  header: 'Account Name',
+                  minWidth: 185,
+                  sortable: true,
+                  render: (c) => (
+                    <span className="text-[#1E293B] truncate block">
+                      {accountName(c.accountId)}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'department',
+                  header: 'Department / Role',
+                  minWidth: 175,
+                  sortable: true,
+                  render: (c) => (
+                    <span className="text-[#334155] truncate block">
+                      {c.department
+                        ? `${c.department}${c.designation ? ` · ${c.designation}` : ''}`
+                        : c.designation || '—'}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'leadSource',
+                  header: 'Lead Source',
+                  minWidth: 145,
+                  sortable: true,
+                  render: (c) =>
+                    c.leadSource ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded bg-[#F1F5F9] text-[#334155] border border-[#E2E8F0] text-[11.5px] font-medium">
+                        {c.leadSource}
                       </span>
+                    ) : (
+                      <span className="text-[#94A3B8]">—</span>
+                    ),
+                },
+                {
+                  key: 'email',
+                  header: 'Email',
+                  minWidth: 210,
+                  sortable: true,
+                  render: (c) =>
+                    c.email ? (
+                      <a
+                        href={`mailto:${c.email}`}
+                        className="text-[#334155] hover:text-[#1262E0] hover:underline truncate block"
+                      >
+                        {c.email}
+                      </a>
+                    ) : (
+                      <span className="text-[#94A3B8]">—</span>
+                    ),
+                },
+                {
+                  key: 'phone',
+                  header: 'Phone',
+                  minWidth: 150,
+                  sortable: true,
+                  render: (c) => (
+                    <span className="text-[#334155] font-mono text-[12px]">
+                      {c.phone || c.mobile || '—'}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'mailingCity',
+                  header: 'City',
+                  minWidth: 130,
+                  sortable: true,
+                  render: (c) => (
+                    <span className="text-[#334155]">
+                      {c.mailingCity || c.city || '—'}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'owner',
+                  header: 'Contact Owner',
+                  minWidth: 165,
+                  sortable: true,
+                  render: (c) => (
+                    <div className="inline-flex items-center gap-1.5">
+                      <UserAvatar userId={c.ownerId} size={20} />
+                      <span className="text-[#334155] text-[12px]">{userName(c.ownerId)}</span>
                     </div>
-                  </>
-                )}
-              />
-              <Pagination table={table} variant="records" />
-            </div>
+                  ),
+                },
+                {
+                  key: 'lastContacted',
+                  header: 'Last Contacted',
+                  minWidth: 130,
+                  sortable: true,
+                  render: (c) => (
+                    <span className="text-[#475569] text-[12px]">
+                      {c.lastContacted ? fmtDate(c.lastContacted) : '—'}
+                    </span>
+                  ),
+                },
+              ]}
+            />
+          )}
+
+          {layout === 'split' && (
+            <SplitView
+              moduleType="contacts"
+              rows={table.sorted}
+              table={table}
+              savedSplitViews={savedContactSplitViews}
+              onSaveSplitView={saveContactSplitView}
+              onDeleteSplitView={deleteContactSplitView}
+              users={users}
+              activeUser={activeUser}
+              onOpenDetail={(id) => openContactDetail(id)}
+              fieldCatalog={[
+                {
+                  key: 'leadSource',
+                  label: 'Lead Source',
+                  type: 'picklist',
+                  options: LEAD_SOURCES,
+                  getValue: (c) => c.leadSource || '',
+                },
+                {
+                  key: 'lifecycle',
+                  label: 'Lifecycle Stage',
+                  type: 'picklist',
+                  options: LIFECYCLES,
+                  getValue: (c) => c.lifecycle || '',
+                },
+                {
+                  key: 'owner',
+                  label: 'Contact Owner',
+                  type: 'user',
+                  options: users.map((u) => u.name),
+                  getValue: (c) => userName(c.ownerId),
+                },
+                {
+                  key: 'department',
+                  label: 'Department',
+                  type: 'picklist',
+                  options: ['Sales', 'IT', 'Finance', 'Marketing', 'Operations', 'Executive', 'Procurement', 'Engineering'],
+                  getValue: (c) => c.department || '',
+                },
+                {
+                  key: 'mailingCity',
+                  label: 'Mailing City',
+                  type: 'picklist',
+                  options: ['Chennai', 'Bengaluru', 'Mumbai', 'Hyderabad', 'New Delhi', 'Pune', 'Coimbatore'],
+                  getValue: (c) => c.mailingCity || c.city || '',
+                },
+                {
+                  key: 'vendorName',
+                  label: 'Vendor Name',
+                  type: 'picklist',
+                  options: VENDORS,
+                  getValue: (c) => c.vendorName || '',
+                },
+                {
+                  key: 'firstName',
+                  label: 'First Name',
+                  type: 'text',
+                  options: [],
+                  getValue: (c) => c.firstName || (c.name || '').split(' ')[0] || '',
+                },
+                {
+                  key: 'lastName',
+                  label: 'Last Name',
+                  type: 'text',
+                  options: [],
+                  getValue: (c) => c.lastName || (c.name || '').split(' ').slice(1).join(' ') || '',
+                },
+                {
+                  key: 'email',
+                  label: 'Email',
+                  type: 'text',
+                  options: [],
+                  getValue: (c) => c.email || '',
+                },
+                {
+                  key: 'phone',
+                  label: 'Phone',
+                  type: 'text',
+                  options: [],
+                  getValue: (c) => c.phone || c.mobile || '',
+                },
+              ]}
+              columnCatalog={[
+                {
+                  key: 'firstName',
+                  label: 'First Name',
+                  minWidth: 155,
+                  render: (c) => (
+                    <button
+                      type="button"
+                      onClick={() => openContactDetail(c.id)}
+                      data-testid={`split-contact-firstname-${c.id}`}
+                      className="font-medium text-[#1E293B] hover:text-[#1262E0] hover:underline text-left truncate block max-w-full cursor-pointer"
+                    >
+                      {c.firstName || (c.name || '').split(' ')[0] || c.name}
+                    </button>
+                  ),
+                },
+                {
+                  key: 'lastName',
+                  label: 'Last Name',
+                  minWidth: 155,
+                  render: (c) => (
+                    <button
+                      type="button"
+                      onClick={() => openContactDetail(c.id)}
+                      className="text-[#1E293B] hover:text-[#1262E0] hover:underline text-left truncate block max-w-full cursor-pointer"
+                    >
+                      {c.lastName || (c.name || '').split(' ').slice(1).join(' ') || '—'}
+                    </button>
+                  ),
+                },
+                {
+                  key: 'name',
+                  label: 'Contact Name',
+                  minWidth: 185,
+                  render: (c) => (
+                    <button
+                      type="button"
+                      onClick={() => openContactDetail(c.id)}
+                      data-testid={`split-contact-name-${c.id}`}
+                      className="font-medium text-[#1E293B] hover:text-[#1262E0] hover:underline text-left truncate block max-w-full cursor-pointer"
+                    >
+                      {c.name}
+                    </button>
+                  ),
+                },
+                {
+                  key: 'account',
+                  label: 'Account Name',
+                  minWidth: 185,
+                  render: (c) => <span className="text-[#1E293B] truncate block">{accountName(c.accountId)}</span>,
+                },
+                {
+                  key: 'leadSource',
+                  label: 'Lead Source',
+                  minWidth: 145,
+                  render: (c) => <span className="text-[#334155]">{c.leadSource || '—'}</span>,
+                },
+                {
+                  key: 'lifecycle',
+                  label: 'Lifecycle Stage',
+                  minWidth: 145,
+                  render: (c) => <GridStatusPill value={c.lifecycle || 'New'} />,
+                },
+                {
+                  key: 'department',
+                  label: 'Department',
+                  minWidth: 155,
+                  render: (c) => <span className="text-[#334155]">{c.department || c.designation || '—'}</span>,
+                },
+                {
+                  key: 'phone',
+                  label: 'Phone',
+                  minWidth: 145,
+                  render: (c) => <span className="text-[#334155] font-mono text-[12px]">{c.phone || c.mobile || '—'}</span>,
+                },
+                {
+                  key: 'email',
+                  label: 'Email',
+                  minWidth: 195,
+                  render: (c) =>
+                    c.email ? (
+                      <a href={`mailto:${c.email}`} className="text-[#334155] hover:text-[#1262E0] hover:underline truncate block">
+                        {c.email}
+                      </a>
+                    ) : (
+                      <span className="text-[#94A3B8]">—</span>
+                    ),
+                },
+                {
+                  key: 'mailingCity',
+                  label: 'Mailing City',
+                  minWidth: 135,
+                  render: (c) => <span className="text-[#334155]">{c.mailingCity || c.city || '—'}</span>,
+                },
+                {
+                  key: 'owner',
+                  label: 'Contact Owner',
+                  minWidth: 165,
+                  render: (c) => (
+                    <div className="inline-flex items-center gap-1.5">
+                      <UserAvatar userId={c.ownerId} size={20} />
+                      <span className="text-[#334155] text-[12px]">{userName(c.ownerId)}</span>
+                    </div>
+                  ),
+                },
+                {
+                  key: 'lastContacted',
+                  label: 'Last Contacted',
+                  minWidth: 135,
+                  render: (c) => <span className="text-[#475569] text-[12px]">{c.lastContacted ? fmtDate(c.lastContacted) : '—'}</span>,
+                },
+              ]}
+            />
           )}
 
           {layout === 'chart' && (
@@ -2741,67 +3112,21 @@ export default function Contacts({ isCreatePage = false }) {
           )}
 
           {layout === 'timeline' && (
-            <div className="p-3 sm:p-4 bg-[#F3F6FB] space-y-3" data-testid="contacts-timeline-layout">
-              {/* Contact Record Selector Header for Timeline View */}
-              <div className="bg-white rounded-md border border-[#DCE3EE] p-3 sm:p-3.5 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  {selectedTimelineContact && (
-                    <PersonAvatar name={selectedTimelineContact.name} size={38} />
-                  )}
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-[#1262E0] bg-[#EFF6FF] border border-[#BFDBFE] px-2 py-0.5 rounded">
-                        Selected Contact
-                      </span>
-                      <span className="text-[14px] font-bold text-[#0F172A] truncate">
-                        {selectedTimelineContact?.name || 'No Contact Selected'}
-                      </span>
-                      {selectedTimelineContact?.lifecycle && (
-                        <StatusBadge kind="lifecycle" value={selectedTimelineContact.lifecycle} size="sm" />
-                      )}
-                    </div>
-                    {selectedTimelineContact && (
-                      <div className="text-[12px] text-[#64748B] truncate mt-0.5">
-                        {selectedTimelineContact.designation || 'Contact'} · {accountName(selectedTimelineContact.accountId)} · Owner: {userName(selectedTimelineContact.ownerId)}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2 shrink-0">
-                  <label className="text-[12px] font-medium text-[#475569] hidden sm:inline" htmlFor="contact-timeline-selector">
-                    Switch Contact:
-                  </label>
-                  <select
-                    id="contact-timeline-selector"
-                    data-testid="contact-timeline-record-select"
-                    value={selectedTimelineContact?.id || ''}
-                    onChange={(e) => setTimelineContactId(e.target.value)}
-                    className="h-8 px-2.5 rounded border border-[#CBD5E1] bg-white text-[12.5px] font-medium text-[#0F172A] max-w-[240px] focus:outline-hidden focus:border-[#1262E0]"
-                  >
-                    {timelineContactsPool.map((cnt) => (
-                      <option key={cnt.id} value={cnt.id}>
-                        {cnt.name} ({accountName(cnt.accountId) || cnt.designation || 'Contact'})
-                      </option>
-                    ))}
-                  </select>
-
-                  {selectedTimelineContact && (
-                    <button
-                      type="button"
-                      data-testid="contact-timeline-open-detail-btn"
-                      onClick={() => openContactDetail(selectedTimelineContact.id, 'timeline')}
-                      className="h-8 px-3 rounded bg-[#1262E0] hover:bg-[#0E4FB5] text-white text-[12px] font-semibold inline-flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <Eye size={13} />
-                      <span>Open Contact Timeline</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <RecordTimeline recordType="contact" record={selectedTimelineContact} />
-            </div>
+            <ModuleTimelineView
+              moduleType="contacts"
+              rows={table.sorted}
+              totalCount={filtered.length}
+              users={users}
+              userName={userName}
+              accountName={accountName}
+              deals={deals}
+              calls={calls}
+              tasks={tasks}
+              sort={table.sort}
+              onSortChange={table.setSort}
+              onOpenDetail={(id) => openContactDetail(id)}
+              emptyResetAction={activeFilterCount > 0 ? clearAllFilters : undefined}
+            />
           )}
         </section>
       </div>
@@ -3567,6 +3892,47 @@ export default function Contacts({ isCreatePage = false }) {
         )}
       </Modal>
 
+      {/* ==================== SEND WHATSAPP MODAL ==================== */}
+      <WhatsAppComposerModal
+        open={Boolean(whatsappContact)}
+        onClose={() => setWhatsappContact(null)}
+        recordType="Contact"
+        recordName={whatsappContact?.name || ''}
+        recordSubtitle={
+          whatsappContact && accountName(whatsappContact.accountId) !== '—'
+            ? `${whatsappContact.designation ? `${whatsappContact.designation} · ` : ''}${accountName(whatsappContact.accountId)}`
+            : whatsappContact?.designation || ''
+        }
+        mobile={whatsappContact?.mobile}
+        phone={whatsappContact?.phone}
+        otherPhone={whatsappContact?.otherPhone}
+        homePhone={whatsappContact?.homePhone}
+        ownerName={whatsappContact ? userName(whatsappContact.ownerId) : activeUser.name}
+        defaultMessage={
+          whatsappContact
+            ? `Hi ${whatsappContact.firstName || whatsappContact.name},\n\nHope you are doing well. Following up on our recent conversation${
+                accountName(whatsappContact.accountId) && accountName(whatsappContact.accountId) !== '—'
+                  ? ` with ${accountName(whatsappContact.accountId)}`
+                  : ''
+              }.\n\nBest regards,\n${userName(whatsappContact.ownerId) || activeUser.name}`
+            : ''
+        }
+        onSavePhone={(updates) => {
+          if (!whatsappContact) return;
+          updateRecord('contacts', whatsappContact.id, {
+            ...updates,
+            modifiedTime: todayISO(),
+          });
+          setWhatsappContact((prev) => (prev ? { ...prev, ...updates } : prev));
+          toast.success(`Updated WhatsApp number on ${whatsappContact.name}`);
+        }}
+        onOpenedWhatsApp={({ number, mode }) => {
+          toast.info(
+            `Opened ${mode === 'web' ? 'WhatsApp Web' : 'WhatsApp'} for ${number}. Please confirm and press Send in WhatsApp.`
+          );
+        }}
+      />
+
       {/* ==================== BULK EDIT MODAL ==================== */}
       <Modal
         open={Boolean(bulkMode)}
@@ -3678,6 +4044,13 @@ export default function Contacts({ isCreatePage = false }) {
                 }
               >
                 <Mail size={15} /> Send Email
+              </button>
+              <button
+                type="button"
+                className="btn-secondary text-[#15803D] border-[#16A34A]/30 bg-[#F0FDF4] hover:bg-[#DCFCE7]"
+                onClick={() => setWhatsappContact(viewingRec)}
+              >
+                <WhatsAppIcon size={15} className="text-[#16A34A]" /> Send WhatsApp
               </button>
               <button
                 type="button"
