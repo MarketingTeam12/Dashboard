@@ -6,18 +6,53 @@ export const STAGES = [
   'Deal Estimation accepted- Invoice Need',
   'Deal Invoice Ready',
   'Deal Closed (Won)',
-  'Deal Job Seeking & Agency',
-  'Pre-Deal Lost',
+  'Deal Job Seeking& Agency',
+  'Pre- Deal Lost',
   'Deal Closed (Lost)'
 ];
 export const OPEN_STAGES = STAGES.slice(0, 5);
 export const STAGE_PROBABILITY = {
-  'Need Deal Estimation': 10, 'Deal Estimation Ready': 30, 'Deal Estimation sent to Client': 50,
-  'Deal Estimation accepted- Invoice Need': 70, 'Deal Invoice Ready': 90, 'Deal Closed (Won)': 100, 'Deal Job Seeking & Agency': 100, 'Pre-Deal Lost': 0, 'Deal Closed (Lost)': 0,
+  'Need Deal Estimation': 10,
+  'Deal Estimation Ready': 30,
+  'Deal Estimation sent to Client': 50,
+  'Deal Estimation accepted- Invoice Need': 70,
+  'Deal Invoice Ready': 90,
+  'Deal Closed (Won)': 100,
+  'Deal Job Seeking& Agency': 100,
+  'Deal Job Seeking & Agency': 100,
+  'Pre- Deal Lost': 0,
+  'Pre-Deal Lost': 0,
+  'Deal Closed (Lost)': 0,
 };
 export const STAGE_COLORS = {
-  'Need Deal Estimation': '#A970F5', 'Deal Estimation Ready': '#FF7B3A', 'Deal Estimation sent to Client': '#2F7BF5',
-  'Deal Estimation accepted- Invoice Need': '#8E3CF2', 'Deal Invoice Ready': '#FFBB28', 'Deal Closed (Won)': '#10B981', 'Deal Job Seeking & Agency': '#F59E0B', 'Pre-Deal Lost': '#7F1D1D', 'Deal Closed (Lost)': '#EF4444',
+  'Need Deal Estimation': '#FDE68A', // YELLOW
+  'Deal Estimation Ready': '#BBF7D0', // GREEN
+  'Deal Estimation sent to Client': '#BAE6FD', // LIGHT BLUE
+  'Deal Estimation accepted- Invoice Need': '#FBCFE8', // LIGHT PINK
+  'Deal Invoice Ready': '#BAE6FD', // LIGHT BLUE
+  'Deal Closed (Won)': '#BBF7D0', // GREEN
+  'Deal Job Seeking& Agency': '#FDE68A', // YELLOW
+  'Deal Job Seeking & Agency': '#FDE68A', // YELLOW
+  'Pre- Deal Lost': '#FECACA', // RED
+  'Pre-Deal Lost': '#FECACA', // RED
+  'Deal Closed (Lost)': '#FECACA', // RED
+  'Closed Won': '#BBF7D0',
+  'Closed Lost': '#FECACA'
+};
+export const STAGE_TEXT_COLORS = {
+  'Need Deal Estimation': '#78350F',
+  'Deal Estimation Ready': '#14532D',
+  'Deal Estimation sent to Client': '#0C4A6E',
+  'Deal Estimation accepted- Invoice Need': '#831843',
+  'Deal Invoice Ready': '#0C4A6E',
+  'Deal Closed (Won)': '#14532D',
+  'Deal Job Seeking& Agency': '#78350F',
+  'Deal Job Seeking & Agency': '#78350F',
+  'Pre- Deal Lost': '#7F1D1D',
+  'Pre-Deal Lost': '#7F1D1D',
+  'Deal Closed (Lost)': '#7F1D1D',
+  'Closed Won': '#14532D',
+  'Closed Lost': '#7F1D1D'
 };
 export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 

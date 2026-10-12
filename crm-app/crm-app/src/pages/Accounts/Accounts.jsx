@@ -179,6 +179,7 @@ export default function Accounts() {
         views={views} view={savedView} onViewChange={(v) => { setSavedView(v); table.setPage(1); }}
         tabMenu={[{ label: 'Export filtered accounts (CSV)', icon: Download, onClick: () => exportRows(table.sorted) }, { label: `Select all ${filtered.length} filtered`, onClick: table.selectAllFiltered }, { label: 'Reset filters', onClick: reset }]}
         toolbar={{
+          sidebarToggle: { isOpen: filtersOpen, onToggle: () => setFiltersOpen((o) => !o) },
           filterActive: filtersOpen, onFilter: () => setFiltersOpen((o) => !o),
           sortOptions: [{ key: 'name', label: 'Account Name' }, { key: 'annualRevenue', label: 'Annual Revenue' }, { key: 'createdOn', label: 'Created On' }, { key: 'contacts', label: 'No. of Contacts' }, { key: 'deals', label: 'No. of Deals' }],
           sort: table.sort, onSort: table.setSort, layouts: ['list', 'kanban', 'grid', 'chart'], layout, onLayout: setLayout,
@@ -203,8 +204,11 @@ export default function Accounts() {
       </div>
 
       <div className="flex gap-3 items-start">
-        {filtersOpen && (
-          <aside className="card hidden md:block w-[220px] shrink-0 px-3.5 py-4 sticky top-[72px] max-h-[calc(100vh-86px)] overflow-y-auto thin-scroll">
+        <aside
+          className={`card hidden md:block shrink-0 px-3.5 py-4 sticky top-[72px] max-h-[calc(100vh-86px)] overflow-y-auto thin-scroll transition-all duration-300 ease-in-out ${
+            filtersOpen ? 'w-[220px] opacity-100' : 'w-0 opacity-0 border-0 p-0 overflow-hidden -mr-3 pointer-events-none'
+          }`}
+        >
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-[15px] font-semibold text-ink whitespace-nowrap">Filter Accounts by</h2>
               {(moreCount > 0 || search) && <button onClick={reset} className="text-[12.5px] text-primary hover:underline">Clear</button>}
@@ -298,7 +302,6 @@ export default function Accounts() {
               </div>
             </details>
           </aside>
-        )}
 
         <div className="flex-1 min-w-0">
           <section className="card overflow-hidden">

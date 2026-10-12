@@ -3,6 +3,7 @@ import { ArrowLeft, Tag, MoreHorizontal, ChevronLeft, ChevronRight, Phone, Trash
 import { useCRM } from "../../context/CRMContext";
 import { fmtDate, fmtTime, fmtDuration, fmtINR } from "../../utils/calculations";
 import { Link } from "react-router-dom";
+import SidebarToggleButton from "../../components/common/SidebarToggleButton";
 
 function EditableField({ label, value, type = "text", options = [], onSave, badgeClass, readOnly, linkTo, hasIcon }) {
   const [isEditing, setIsEditing] = useState(false);
@@ -110,6 +111,7 @@ export default function CallDetail({ id, onClose, onEdit, onDelete, onPrev, onNe
 
   const [activeTab, setActiveTab] = useState("Overview");
   const [activeSection, setActiveSection] = useState("section-call-summary");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const [openActivitiesOpen, setOpenActivitiesOpen] = useState({ tasks: false, meetings: false, calls: false });
 
@@ -207,9 +209,16 @@ export default function CallDetail({ id, onClose, onEdit, onDelete, onPrev, onNe
 
       {/* Sub Header */}
       <div className="bg-[#F5F7FA] px-4 py-2 flex items-center justify-between border-b border-line shrink-0">
-        <div className="flex items-center gap-6 text-[13px] font-medium">
-          <button onClick={() => setActiveTab("Overview")} className={`pb-1 ${activeTab === "Overview" ? "text-primary border-b-2 border-primary" : "text-ink-500 hover:text-ink"}`}>Overview</button>
-          <button onClick={() => setActiveTab("Timeline")} className={`pb-1 ${activeTab === "Timeline" ? "text-primary border-b-2 border-primary" : "text-ink-500 hover:text-ink"}`}>Timeline</button>
+        <div className="flex items-center gap-3">
+          <SidebarToggleButton
+            isOpen={sidebarOpen}
+            onToggle={() => setSidebarOpen(prev => !prev)}
+            size="sm"
+          />
+          <div className="flex items-center gap-6 text-[13px] font-medium">
+            <button onClick={() => setActiveTab("Overview")} className={`pb-1 ${activeTab === "Overview" ? "text-primary border-b-2 border-primary" : "text-ink-500 hover:text-ink"}`}>Overview</button>
+            <button onClick={() => setActiveTab("Timeline")} className={`pb-1 ${activeTab === "Timeline" ? "text-primary border-b-2 border-primary" : "text-ink-500 hover:text-ink"}`}>Timeline</button>
+          </div>
         </div>
         <div className="text-[11px] text-ink-500 flex items-center gap-1">
           Last Update : {fmtDate(call.dateTime)}
@@ -219,7 +228,11 @@ export default function CallDetail({ id, onClose, onEdit, onDelete, onPrev, onNe
       {/* Main Content Area */}
       <div className="flex flex-1 overflow-hidden">
         {activeTab === "Overview" && (
-          <div className="w-[210px] bg-white border-r border-line flex flex-col overflow-y-auto thin-scroll shrink-0 pb-4">
+          <div
+            className={`bg-white border-r border-line flex flex-col overflow-y-auto thin-scroll shrink-0 pb-4 transition-all duration-300 ease-in-out ${
+              sidebarOpen ? "w-[210px] opacity-100" : "w-0 opacity-0 overflow-hidden border-r-0"
+            }`}
+          >
             <div className="pt-4">
               <ul className="text-[13.5px] text-ink-700">
                 {[

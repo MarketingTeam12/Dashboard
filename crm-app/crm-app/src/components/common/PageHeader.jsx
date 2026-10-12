@@ -1,21 +1,32 @@
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowUpDown, BarChart3, Check, ChevronDown, Clock3, Columns3, Filter, LayoutGrid, List, MapPin, MoreHorizontal,
-  PieChart, RotateCw, Rows3, Workflow,
+  ArrowUpDown, BarChart3, Check, ChevronDown, Clock3, Columns2, Columns3, Filter, LayoutDashboard, LayoutGrid, List, MapPin, MoreHorizontal,
+  PieChart, RotateCw, Rows3, SlidersHorizontal, Table2, Workflow,
 } from 'lucide-react';
 import Dropdown, { MenuDivider, MenuItem, MenuLabel } from './Dropdown';
+import SidebarToggleButton from './SidebarToggleButton';
 
 export const LAYOUTS = {
-  list: { icon: List, label: 'List view' },
-  kanban: { icon: Columns3, label: 'Kanban view' },
-  grid: { icon: LayoutGrid, label: 'Grid view' },
-  chart: { icon: PieChart, label: 'Chart view' },
-  timeline: { icon: Clock3, label: 'Timeline view' },
+  list: { icon: List, label: 'List View' },
+  kanban: { icon: Columns3, label: 'Kanban View' },
+  grid: { icon: LayoutGrid, label: 'Grid View' },
+  chart: { icon: PieChart, label: 'Chart View' },
+  timeline: { icon: Clock3, label: 'Timeline View' },
+  split: { icon: Columns2, label: 'Split View' },
+  custom_list: { icon: SlidersHorizontal, label: 'Custom List View' },
+  tile: { icon: LayoutDashboard, label: 'Tile View' },
+  table: { icon: Table2, label: 'Table View' },
   bars: { icon: BarChart3, label: 'Comparison view' },
   map: { icon: MapPin, label: 'Location view' },
 };
 
-const renderItems = (items, close) => items.filter(Boolean).map((it, i) => (it.divider ? <MenuDivider key={i} /> : it.heading ? <MenuLabel key={i}>{it.heading}</MenuLabel> : <MenuItem key={i} {...it} close={close}>{it.label}</MenuItem>));
+const renderItems = (items, close) => items.filter(Boolean).map((it, i) => (
+  it.divider ? <MenuDivider key={i} /> :
+  it.heading ? <MenuLabel key={i}>{it.heading}</MenuLabel> :
+  it.render ? <React.Fragment key={i}>{it.render(close)}</React.Fragment> :
+  <MenuItem key={i} {...it} close={close}>{it.label}</MenuItem>
+));
 
 /** "All Contacts ▾ ⋯" row */
 export function ViewTabs({ views, view, onViewChange, tabMenu }) {
@@ -55,17 +66,31 @@ const sq = 'h-10 flex items-center justify-center text-ink-600 hover:bg-page';
 export function Toolbar({
   labeled, filterActive, onFilter, sortOptions = [], sort, onSort, layouts = ['list'], layout, onLayout,
   onRefresh, refreshing, dense, onDense, module, primary, customRight, moreItems,
+  hideWorkflow, hideDense, customLayoutButtons, customViewsDropdown, onCustomListViews,
+  sidebarToggle,
 }) {
   const navigate = useNavigate();
+  const isDeals = module === 'Deals';
+  const showWorkflow = hideWorkflow !== undefined ? !hideWorkflow : !isDeals;
+  const showDense = hideDense !== undefined ? !hideDense : !isDeals;
+  const showLabel = labeled || isDeals;
+
   return (
     <div className="card px-2.5 py-2 flex flex-wrap items-center gap-2.5 mb-3">
+      {sidebarToggle && (
+        <SidebarToggleButton
+          isOpen={sidebarToggle.isOpen}
+          onToggle={sidebarToggle.onToggle}
+          size="md"
+        />
+      )}
       <button type="button" onClick={onFilter} aria-pressed={filterActive}
-        className={`h-10 ${labeled ? 'px-4 gap-2' : 'w-[54px]'} rounded-lg border flex items-center justify-center text-[15px] ${filterActive ? 'border-primary bg-primary-50 text-primary' : 'border-line bg-white text-ink-600 hover:bg-page'}`}>
-        <Filter size={18} />{labeled && 'Filter'}
+        className={`h-10 ${showLabel ? 'px-3.5 gap-2' : 'w-[54px]'} rounded-lg border flex items-center justify-center text-[14.5px] font-medium ${filterActive ? 'border-primary bg-primary-50 text-primary' : 'border-line bg-white text-ink-600 hover:bg-page'}`}>
+        <Filter size={18} />{showLabel && <span>Filter</span>}
       </button>
       <Dropdown width={230} trigger={
-        <button type="button" className={`h-10 ${labeled ? 'px-4 gap-2' : 'w-[54px]'} rounded-lg border flex items-center justify-center text-[15px] ${sort ? 'border-primary bg-primary-50 text-primary' : 'border-line bg-white text-ink-600 hover:bg-page'}`} aria-label="Sort">
-          <ArrowUpDown size={18} />{labeled && 'Sort'}
+        <button type="button" className={`h-10 ${showLabel ? 'px-3.5 gap-2' : 'w-[54px]'} rounded-lg border flex items-center justify-center text-[14.5px] font-medium ${sort ? 'border-primary bg-primary-50 text-primary' : 'border-line bg-white text-ink-600 hover:bg-page'}`} aria-label="Sort">
+          <ArrowUpDown size={18} />{showLabel && <span>Sort</span>}
         </button>
       }>
         {(close) => (
@@ -89,6 +114,7 @@ export function Toolbar({
       <div className="flex rounded-lg border border-line bg-white overflow-hidden divide-x divide-line">
         {layouts.map((k) => {
           const L = LAYOUTS[k];
+          if (!L) return null;
           const active = layout === k;
           return (
             <button key={k} type="button" title={L.label} aria-label={L.label} aria-pressed={active} onClick={() => onLayout(k)}
@@ -97,18 +123,41 @@ export function Toolbar({
             </button>
           );
         })}
-        <button type="button" title="Workflow rules" aria-label="Workflow rules" onClick={() => navigate(`/workflows${module ? `?module=${encodeURIComponent(module)}` : ''}`)} className={`${sq} w-[50px] sm:w-[56px] hidden md:flex`}><Workflow size={19} /></button>
-        <button type="button" title={dense ? 'Comfortable rows' : 'Compact rows'} aria-label="Row density" aria-pressed={!!dense} onClick={onDense} className={`${sq} w-[50px] sm:w-[56px] hidden md:flex ${dense ? 'text-primary' : ''}`}><Rows3 size={19} /></button>
-        <Dropdown width={210} align="right" trigger={<button type="button" aria-label="All views" className={`${sq} w-[46px]`}><ChevronDown size={17} /></button>}>
-          {(close) => (
-            <>
-              <MenuLabel>Views</MenuLabel>
-              {layouts.map((k) => <MenuItem key={k} close={close} icon={LAYOUTS[k].icon} active={layout === k} onClick={() => onLayout(k)}>{LAYOUTS[k].label}</MenuItem>)}
-              <MenuDivider />
-              <MenuItem close={close} icon={Rows3} onClick={onDense}>{dense ? 'Comfortable rows' : 'Compact rows'}</MenuItem>
-              <MenuItem close={close} icon={Workflow} onClick={() => navigate(`/workflows${module ? `?module=${encodeURIComponent(module)}` : ''}`)}>Workflow rules</MenuItem>
-            </>
-          )}
+        {customLayoutButtons}
+        {showWorkflow && (
+          <button type="button" title="Workflow rules" aria-label="Workflow rules" onClick={() => navigate(`/workflows${module ? `?module=${encodeURIComponent(module)}` : ''}`)} className={`${sq} w-[50px] sm:w-[56px] hidden md:flex`}><Workflow size={19} /></button>
+        )}
+        {showDense && (
+          <button type="button" title={dense ? 'Comfortable rows' : 'Compact rows'} aria-label="Row density" aria-pressed={!!dense} onClick={onDense} className={`${sq} w-[50px] sm:w-[56px] hidden md:flex ${dense ? 'text-primary' : ''}`}><Rows3 size={19} /></button>
+        )}
+        <Dropdown width={220} align="right" trigger={<button type="button" aria-label="All views" className={`${sq} w-[46px]`}><ChevronDown size={17} /></button>}>
+          {(close) => {
+            if (customViewsDropdown) {
+              return customViewsDropdown(close);
+            }
+            if (isDeals) {
+              const dealsViews = ['list', 'kanban', 'tile', 'chart', 'timeline', 'split'];
+              return (
+                <>
+                  <MenuLabel>Views</MenuLabel>
+                  {dealsViews.map((k) => (
+                    <MenuItem key={k} close={close} icon={LAYOUTS[k]?.icon} active={layout === k} onClick={() => onLayout(k)}>
+                      {LAYOUTS[k]?.label}
+                    </MenuItem>
+                  ))}
+                </>
+              );
+            }
+            return (
+              <>
+                <MenuLabel>Views</MenuLabel>
+                {layouts.map((k) => <MenuItem key={k} close={close} icon={LAYOUTS[k]?.icon} active={layout === k} onClick={() => onLayout(k)}>{LAYOUTS[k]?.label}</MenuItem>)}
+                <MenuDivider />
+                {showDense && <MenuItem close={close} icon={Rows3} onClick={onDense}>{dense ? 'Comfortable rows' : 'Compact rows'}</MenuItem>}
+                {showWorkflow && <MenuItem close={close} icon={Workflow} onClick={() => navigate(`/workflows${module ? `?module=${encodeURIComponent(module)}` : ''}`)}>Workflow rules</MenuItem>}
+              </>
+            );
+          }}
         </Dropdown>
       </div>
       <button type="button" onClick={onRefresh} title="Refresh" aria-label="Refresh" className="h-10 w-[50px] rounded-lg border border-line bg-white flex items-center justify-center text-ink-600 hover:bg-page">
