@@ -35,9 +35,19 @@ function loadAll() {
   }
   
   if (seed.deals) {
-    seed.deals = seed.deals.map(d => 
-      d.stage === 'Deal Job Seen' ? { ...d, stage: 'Deal Job Seeking & Agency' } : d
-    );
+    seed.deals = seed.deals.map((d, idx) => {
+      let stage = d.stage === 'Deal Job Seen' ? 'Deal Job Seeking & Agency' : d.stage;
+      const contact = seed.contacts?.find((c) => c.id === d.contactId);
+      return {
+        ...d,
+        stage,
+        createdTime: d.createdTime || (d.createdOn ? `${d.createdOn}T${String(10 + (idx % 8)).padStart(2, '0')}:${String((idx * 13) % 60).padStart(2, '0')}:00` : new Date().toISOString()),
+        categories: d.categories || (idx % 3 === 0 ? 'DTP Services' : idx % 3 === 1 ? 'translations' : 'Tamil DTP Services'),
+        mobile: d.mobile || d.mobileNo || contact?.phone || '9444339527',
+        remarks: d.remarks || (idx % 4 === 0 ? 'busy' : idx % 4 === 1 ? 'rnr' : idx % 4 === 2 ? 'switch off' : 'not enquired.'),
+        leadManager1: d.leadManager1 || 'u7',
+      };
+    });
   }
   
   return seed;
@@ -93,7 +103,12 @@ export function CRMProvider({ children }) {
   });
 
   const createRecord = useCallback((col, data) => {
-    let record = { ...data, id: newId(col), createdOn: data.createdOn || todayISO() };
+    let record = { 
+      ...data, 
+      id: newId(col), 
+      createdOn: data.createdOn || todayISO(),
+      createdTime: data.createdTime || new Date().toISOString()
+    };
     const res = applyEvent(col, 'created', record, null);
     record = { ...record, ...res.patch };
     setDb((d) => ({ ...d, [col]: [record, ...d[col]], ...mergeEffects(d, res, [userLog(col, 'created', record)]) }));

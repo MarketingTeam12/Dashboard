@@ -15,6 +15,7 @@ import SidebarToggleButton from '../../components/common/SidebarToggleButton';
 import Modal from '../../components/common/Modal';
 import { useCRM } from '../../context/CRMContext';
 import { useToast } from '../../components/common/Toast';
+import TimelineHistoryView from '../../components/common/TimelineHistoryView';
 import {
   fmtINR, fmtDate, fmtTime, fmtDuration, STAGES, STAGE_COLORS,
   STAGE_PROBABILITY, todayISO
@@ -24,10 +25,14 @@ import StatusBadge, { badgeTone } from '../../components/common/StatusBadge';
 import {
   LANGUAGES, CATEGORIES_OPTIONS, JOB_TYPE_OPTIONS, JOB_TYPE_COLORS, PURPOSE_TRANSLATION_OPTIONS,
   DELIVERY_TYPE_OPTIONS, DELIVERY_TYPE_COLORS, SUBMISSION_STATUS_OPTIONS, SUBMISSION_STATUS_COLORS,
-  FORECAST_CATEGORY_OPTIONS, CATEGORY_OPTIONS, TYPE_OPTIONS, APPROVAL_STATUS_OPTIONS,
+  FORECAST_CATEGORY_OPTIONS, FORECAST_CATEGORY_COLORS, CATEGORY_OPTIONS, TYPE_OPTIONS, APPROVAL_STATUS_OPTIONS,
   EST_READY_OPTIONS, PREVIOUS_PENDING_ESTIMATIONS_OPTIONS, LEAD_SOURCE_OPTIONS,
-  LEAD_SOURCE_COLORS, STAGE_TEXT_COLORS
+  LEAD_SOURCE_COLORS, STAGE_TEXT_COLORS, TERRITORY_OPTIONS,
+  DEFAULT_DEAL_TAGS, DEFAULT_ORGANIZE_SECTIONS
 } from './dealsConfig';
+import {
+  ArrowTagBadge, AddTagsDropdown, ManageTagsModal, OrganizeSectionsPanel, ManageLinksModal
+} from './DealCustomizations';
 
 // Product Catalog Reference for Deal Products
 export const PRODUCT_CATALOG = [
@@ -297,6 +302,267 @@ function ZohoDropdownField({
         </div>
       )}
     </div>
+  );
+}
+
+export const ALL_STAGE_HISTORY_FIELDS = [
+  { id: 'Stage', label: 'Stage', mandatory: true },
+  { id: 'Amount', label: 'Amount', mandatory: false },
+  { id: 'Stage Duration (Calendar Days)', label: 'Stage Duration (Calendar Days)', mandatory: true },
+  { id: 'Modified Time', label: 'Modified Time', mandatory: false },
+  { id: 'Modified By', label: 'Modified By', mandatory: false },
+  { id: 'Probability (%)', label: 'Probability (%)', mandatory: false },
+  { id: 'Expected Revenue', label: 'Expected Revenue', mandatory: false },
+  { id: 'Closing Date', label: 'Closing Date', mandatory: false },
+  { id: 'Moved To', label: 'Moved To', mandatory: false },
+];
+
+/**
+ * Deal Owner Hover Details Card & Click Trigger
+ * Matches Screenshot 6 & Screenshot 7
+ */
+function DealOwnerDisplay({ deal, users = [], userName, onOpenChangeOwner }) {
+  const [hovered, setHovered] = useState(false);
+  const hoverTimeoutRef = useRef(null);
+
+  const ownerName = userName ? userName(deal?.ownerId) : (deal?.ownerId || 'Marketing Department');
+  const ownerUser = users.find(u => u.id === deal?.ownerId || u.name === deal?.ownerId || u.name === ownerName) || {
+    id: deal?.ownerId || 'u-mkt',
+    name: ownerName || 'Marketing Department',
+    role: 'Lead Generation & Inbound',
+    email: 'marketing@crm.in',
+    mobile: '+91 98400 11223',
+    phone: '044-24567800',
+    color: '#0284C7'
+  };
+
+  const handleMouseEnter = () => {
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    setHovered(true);
+  };
+
+  const handleMouseLeave = () => {
+    hoverTimeoutRef.current = setTimeout(() => {
+      setHovered(false);
+    }, 250);
+  };
+
+  return (
+    <div
+      className="relative inline-block"
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      <span
+        onClick={onOpenChangeOwner}
+        className="text-ink font-medium hover:text-[#4361EE] cursor-pointer hover:underline transition-colors select-none"
+        title="Click to Change Deal Owner"
+      >
+        {ownerName}
+      </span>
+
+      {/* User Information Popup (Matches Screenshot 7) */}
+      {hovered && (
+        <div
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+          className="absolute left-0 top-[calc(100%+8px)] w-[280px] bg-white border border-slate-200 rounded-xl shadow-2xl p-4 z-50 text-left animate-in fade-in zoom-in-95 duration-150"
+        >
+          <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
+            <div
+              className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[14px] shrink-0 shadow-xs"
+              style={{ backgroundColor: ownerUser.color || '#4361EE' }}
+            >
+              {ownerUser.name ? ownerUser.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : 'U'}
+            </div>
+            <div className="min-w-0 flex-1">
+              <h4 className="text-[14px] font-bold text-slate-900 truncate leading-tight">
+                {ownerUser.name}
+              </h4>
+              {ownerUser.role && (
+                <p className="text-[11.5px] text-slate-500 font-medium truncate mt-0.5">
+                  {ownerUser.role}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="pt-3 space-y-2 text-[12.5px]">
+            {ownerUser.email && (
+              <div className="flex items-center gap-2.5 text-slate-700">
+                <Mail size={13} className="text-slate-400 shrink-0" />
+                <span className="truncate">{ownerUser.email}</span>
+              </div>
+            )}
+            {ownerUser.mobile && (
+              <div className="flex items-center gap-2.5 text-slate-700">
+                <Phone size={13} className="text-slate-400 shrink-0" />
+                <span className="truncate">{ownerUser.mobile}</span>
+              </div>
+            )}
+            {ownerUser.phone && (
+              <div className="flex items-center gap-2.5 text-slate-700">
+                <PhoneCall size={13} className="text-slate-400 shrink-0" />
+                <span className="truncate">{ownerUser.phone}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Change Owner Modal
+ * Matches Screenshot 6
+ */
+function ChangeOwnerModal({ open, deal, users = [], onClose, onSave }) {
+  const [selectedUserId, setSelectedUserId] = useState(deal?.ownerId || '');
+  const [isOpenSelect, setIsOpenSelect] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    setSelectedUserId(deal?.ownerId || '');
+    setIsOpenSelect(false);
+    setSearchQuery('');
+  }, [open, deal?.ownerId]);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setIsOpenSelect(false);
+      }
+    };
+    if (isOpenSelect) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpenSelect]);
+
+  if (!open) return null;
+
+  const selectedUser = users.find(u => u.id === selectedUserId || u.name === selectedUserId);
+  const filteredUsers = users.filter(u =>
+    u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (u.role && u.role.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
+
+  const isValidSelection = !!selectedUserId && selectedUserId !== deal?.ownerId;
+
+  const handleConfirm = () => {
+    if (!selectedUserId) return;
+    onSave(selectedUserId);
+  };
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-2xs p-4 animate-in fade-in duration-150">
+      <div className="w-[490px] max-w-[95vw] bg-white rounded-xl shadow-2xl p-6 text-left relative animate-in zoom-in-95 duration-150">
+        <h3 className="text-[18px] font-bold text-slate-800 mb-6">Change Owner</h3>
+
+        <div className="flex items-center gap-3 mb-8">
+          <label className="text-[13px] text-slate-600 font-medium w-[90px] text-right shrink-0">
+            Deal Owner
+          </label>
+          <div ref={dropdownRef} className="relative flex-1">
+            <div
+              onClick={() => setIsOpenSelect(prev => !prev)}
+              className="w-full h-[36px] bg-white border border-[#5468FF] rounded-md px-3 flex items-center justify-between text-[13px] cursor-pointer shadow-xs"
+            >
+              <span className={`truncate ${selectedUser ? 'text-slate-800 font-medium' : 'text-slate-400'}`}>
+                {selectedUser ? selectedUser.name : 'Select User'}
+              </span>
+              <div className="flex items-center gap-1.5 text-slate-500 shrink-0">
+                <span className="text-[9px]">{isOpenSelect ? '▲' : '▼'}</span>
+                <User size={14} className="text-slate-700 ml-1" />
+              </div>
+            </div>
+
+            {isOpenSelect && (
+              <div className="absolute left-0 top-[calc(100%+4px)] w-full bg-white border border-slate-200 rounded-md shadow-xl z-50 overflow-hidden text-left animate-in fade-in zoom-in-95 duration-100">
+                <div className="p-2 border-b border-slate-100 bg-white">
+                  <div className="relative flex items-center">
+                    <Search size={13} className="absolute left-2.5 text-slate-400 pointer-events-none" />
+                    <input
+                      type="text"
+                      placeholder="Search user..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-full h-7 pl-7 pr-2.5 text-[12px] bg-white border border-slate-200 rounded outline-none focus:border-[#4361EE] text-slate-800"
+                      autoFocus
+                    />
+                  </div>
+                </div>
+
+                <div className="max-h-[200px] overflow-y-auto thin-scroll py-1">
+                  {filteredUsers.length === 0 ? (
+                    <div className="px-3 py-2 text-center text-[12px] text-slate-400">
+                      No matching users
+                    </div>
+                  ) : (
+                    filteredUsers.map(u => {
+                      const isSelected = u.id === selectedUserId;
+                      return (
+                        <div
+                          key={u.id}
+                          onClick={() => {
+                            setSelectedUserId(u.id);
+                            setIsOpenSelect(false);
+                          }}
+                          className={`px-3 py-1.5 text-[13px] flex items-center justify-between cursor-pointer transition-colors ${
+                            isSelected ? 'bg-[#EEF2FF] text-[#1D4ED8] font-bold' : 'text-slate-700 hover:bg-[#F8FAFC]'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 truncate">
+                            <span
+                              className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10.5px] font-bold shrink-0"
+                              style={{ backgroundColor: u.color || '#4361EE' }}
+                            >
+                              {u.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                            </span>
+                            <span className="truncate">{u.name}</span>
+                          </div>
+                          {u.role && (
+                            <span className="text-[11px] text-slate-400 shrink-0 ml-2">
+                              {u.role}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-1.5 text-[13px] font-medium text-slate-700 bg-[#F1F5F9] hover:bg-slate-200 border border-slate-300 rounded transition-colors cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            disabled={!isValidSelection}
+            className={`px-4 py-1.5 text-[13px] font-medium rounded transition-colors shadow-xs ${
+              isValidSelection
+                ? 'bg-[#7B8BFA] hover:bg-[#5468FF] text-white cursor-pointer'
+                : 'bg-[#94A3B8]/60 text-white cursor-not-allowed'
+            }`}
+          >
+            Change Owner
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
 
@@ -684,15 +950,58 @@ export default function DealDetail({ id, onClose, onEdit }) {
   const [openActivityTab, setOpenActivityTab] = useState('all');
   const [openActivityMenuOpen, setOpenActivityMenuOpen] = useState(false);
 
-  // Stage History Column Settings Modal
-  const [stageHistoryColsOpen, setStageHistoryColsOpen] = useState(false);
-  const [stageHistorySearch, setStageHistorySearch] = useState('');
-  const [stageHistoryCols, setStageHistoryCols] = useState([
-    'Stage', 'Amount', 'Stage Duration (Calendar Days)', 'Modified Time', 'Modified By'
-  ]);
-  const ALL_STAGE_HISTORY_COLS = [
-    'Stage', 'Amount', 'Stage Duration (Calendar Days)', 'Modified Time', 'Modified By', 'Probability'
-  ];
+  // Stage History Customize List Popup (Matches Screenshot 2)
+  const [customizePopupOpen, setCustomizePopupOpen] = useState(false);
+  const [customizeSearch, setCustomizeSearch] = useState('');
+  const [stageHistoryCols, setStageHistoryCols] = useState(() => {
+    try {
+      const saved = localStorage.getItem('deal_stage_history_cols');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return ['Stage', 'Amount', 'Stage Duration (Calendar Days)', 'Modified Time', 'Modified By'];
+  });
+  const [tempStageCols, setTempStageCols] = useState(() => {
+    try {
+      const saved = localStorage.getItem('deal_stage_history_cols');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return ['Stage', 'Amount', 'Stage Duration (Calendar Days)', 'Modified Time', 'Modified By'];
+  });
+  const customizePopupRef = useRef(null);
+
+  // Change Deal Owner Modal (Matches Screenshot 6)
+  const [changeOwnerModalOpen, setChangeOwnerModalOpen] = useState(false);
+
+  // Organize Potentials Details Panel (Matches Screenshot 1)
+  const [organizeSections, setOrganizeSections] = useState(() => {
+    try {
+      const saved = localStorage.getItem('deal_related_sections_order');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return DEFAULT_ORGANIZE_SECTIONS;
+  });
+  const [organizePanelOpen, setOrganizePanelOpen] = useState(false);
+
+  // Manage Tags and Add Tags Dropdown (Matches Screenshots 3, 4, 5)
+  const [allTags, setAllTags] = useState(() => {
+    try {
+      const saved = localStorage.getItem('crm_all_tags');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return DEFAULT_DEAL_TAGS;
+  });
+  const [addTagsDropdownOpen, setAddTagsDropdownOpen] = useState(false);
+  const addTagsBtnRef = useRef(null);
+  const [manageTagsModalOpen, setManageTagsModalOpen] = useState(false);
+
+  const tagColorMap = useMemo(() => {
+    const map = {};
+    allTags.forEach(t => { map[t.name] = t.color; });
+    return map;
+  }, [allTags]);
+
+  // Manage Links Modal (Matches Screenshot 2)
+  const [manageLinksModalOpen, setManageLinksModalOpen] = useState(false);
 
   // Modals state
   const [emailModalOpen, setEmailModalOpen] = useState(false);
@@ -715,9 +1024,36 @@ export default function DealDetail({ id, onClose, onEdit }) {
   const [attachLinkTitle, setAttachLinkTitle] = useState('');
   const [attachLinkUrl, setAttachLinkUrl] = useState('');
   const [emailSubTab, setEmailSubTab] = useState('Mails'); // 'Mails' | 'Drafts' | 'Scheduled'
+  
+  // Zoho Projects Dropdown (Matches Screenshot 1)
   const [projectsFilter, setProjectsFilter] = useState('Active Projects');
+  const [projectsDropdownOpen, setProjectsDropdownOpen] = useState(false);
+  const projectsFilterRef = useRef(null);
+
+  // Notes Dropdown (Matches Screenshot 3)
   const [notesFilter, setNotesFilter] = useState('Recent Last');
+  const [notesDropdownOpen, setNotesDropdownOpen] = useState(false);
+  const notesFilterRef = useRef(null);
+
   const [scoringViewMode, setScoringViewMode] = useState('list'); // 'list' | 'chart'
+
+  // Close popovers on click outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (customizePopupRef.current && !customizePopupRef.current.contains(e.target)) {
+        setCustomizePopupOpen(false);
+        setTempStageCols(stageHistoryCols);
+      }
+      if (projectsFilterRef.current && !projectsFilterRef.current.contains(e.target)) {
+        setProjectsDropdownOpen(false);
+      }
+      if (notesFilterRef.current && !notesFilterRef.current.contains(e.target)) {
+        setNotesDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [stageHistoryCols]);
 
   // Contact Roles state
   const [contactRolesList, setContactRolesList] = useState(() => {
@@ -1005,32 +1341,37 @@ export default function DealDetail({ id, onClose, onEdit }) {
     toast.success(`Invoice ${created.number} created successfully.`);
   };
 
-  // Links state
+  // Links state (managed via Screenshot 2 Manage Links)
   const [dealLinks, setDealLinks] = useState(() => {
     try {
-      const saved = localStorage.getItem(`deal_links_${deal?.id}`);
+      const saved = localStorage.getItem('deal_managed_links');
       if (saved) return JSON.parse(saved);
     } catch (e) {}
-    return deal?.links && Array.isArray(deal.links) ? deal.links : [];
-  });
-  const [addLinkModalOpen, setAddLinkModalOpen] = useState(false);
-  const [newLinkTitle, setNewLinkTitle] = useState('');
-  const [newLinkUrl, setNewLinkUrl] = useState('');
-
-  const handleAddLink = () => {
-    if (!newLinkTitle.trim() || !newLinkUrl.trim()) {
-      toast.error('Both Link Title and URL are required.');
-      return;
-    }
-    const updated = [...dealLinks, { title: newLinkTitle.trim(), url: newLinkUrl.trim() }];
-    setDealLinks(updated);
     try {
-      localStorage.setItem(`deal_links_${deal.id}`, JSON.stringify(updated));
+      const savedDeal = localStorage.getItem(`deal_links_${deal?.id}`);
+      if (savedDeal) return JSON.parse(savedDeal);
     } catch (e) {}
-    setNewLinkTitle('');
-    setNewLinkUrl('');
-    setAddLinkModalOpen(false);
-    toast.success('Link added successfully.');
+    return deal?.links && Array.isArray(deal.links) && deal.links.length > 0
+      ? deal.links
+      : [
+          {
+            id: 'lnk-01',
+            name: 'Client Portal',
+            title: 'Client Portal',
+            url: 'https://client-portal.lingo.in',
+            description: 'Access client translation project specifications and assets',
+            profilesPermitted: 'All Profiles',
+            lastModified: '12/10/2026 01:21 PM'
+          }
+        ];
+  });
+
+  const handleUpdateLinks = (next) => {
+    setDealLinks(next);
+    try {
+      localStorage.setItem('deal_managed_links', JSON.stringify(next));
+      localStorage.setItem(`deal_links_${deal.id}`, JSON.stringify(next));
+    } catch (e) {}
   };
 
   // Add Related List Modal
@@ -1415,18 +1756,15 @@ export default function DealDetail({ id, onClose, onEdit }) {
     toast.success('Meeting marked as Completed');
   };
 
-  // Tags Operations
-  const tagsList = useMemo(() => deal.tagsList || ['Translation', 'Priority'], [deal.tagsList]);
-  const handleAddTag = () => {
-    if (!newTagInput.trim()) return;
-    const tag = newTagInput.trim();
-    if (!tagsList.includes(tag)) {
-      const next = [...tagsList, tag];
-      updateRecord('deals', deal.id, { tagsList: next });
-      toast.success(`Tag "${tag}" added`);
-    }
-    setNewTagInput('');
-    setTagModalOpen(false);
+  // Tags Operations (Matches Screenshots 3, 4, 5)
+  const tagsList = useMemo(() => {
+    if (deal?.tagsList && Array.isArray(deal.tagsList)) return deal.tagsList;
+    return ['Waiting for Estimation', 'followup'];
+  }, [deal?.tagsList]);
+
+  const handleSaveDealTags = (newTags) => {
+    updateRecord('deals', deal.id, { tagsList: newTags });
+    toast.success('Tags updated successfully');
   };
 
   const handleRemoveTag = (tagToRemove) => {
@@ -1452,6 +1790,134 @@ export default function DealDetail({ id, onClose, onEdit }) {
   const nextDeal = dealIdx !== -1 && dealIdx < deals.length - 1 ? deals[dealIdx + 1] : null;
 
   const currentIndex = STAGES.indexOf(deal.stage);
+
+  // Section visibility & dynamic ordering helpers based on Organize Potentials Details
+  const isSectionVisible = (sectionId) => {
+    const sec = organizeSections.find(s => s.id === sectionId);
+    return sec ? Boolean(sec.visible) : true;
+  };
+
+  const getSectionOrder = (sectionId) => {
+    const idx = organizeSections.findIndex(s => s.id === sectionId);
+    return idx !== -1 ? idx : 50;
+  };
+
+  const renderGenericSection = (sec) => {
+    const standardIds = [
+      'section-notes', 'section-contact-roles', 'section-attachments', 'section-emails',
+      'section-stage-history', 'section-zoho-projects', 'section-open-activities',
+      'section-closed-activities', 'section-zoho-finance'
+    ];
+    if (standardIds.includes(sec.id) || !sec.visible) return null;
+
+    if (sec.id === 'section-products') {
+      return (
+        <div
+          key={sec.id}
+          id="section-products"
+          style={{ order: getSectionOrder('section-products') }}
+          className="bg-white border border-line rounded-xl shadow-xs overflow-hidden"
+        >
+          <div className="p-4 border-b border-line bg-[#FAFAFA] flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Package size={16} className="text-primary" />
+              <h3 className="text-[14.5px] font-bold text-ink uppercase tracking-wide">Products</h3>
+              <span className="rounded-full px-2 py-0.5 text-[11px] font-bold bg-slate-200 text-ink-700">
+                {productsList.length}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              {productsList.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleSyncProductTotalToDeal}
+                  className="btn-secondary h-7 px-2.5 text-[12px] font-medium cursor-pointer"
+                  title="Sync Total to Deal Amount"
+                >
+                  Sync Amount
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setProductModalOpen(true)}
+                className="btn-primary h-7 px-3 text-[12px] font-medium flex items-center gap-1 cursor-pointer"
+              >
+                <Plus size={12} />
+                <span>Add Product</span>
+              </button>
+            </div>
+          </div>
+          <div className="p-4 overflow-x-auto">
+            {productsList.length === 0 ? (
+              <div className="py-6 text-center text-[13px] text-ink-400">No products added.</div>
+            ) : (
+              <table className="w-full text-left text-[13px]">
+                <thead className="bg-[#F8FAFC] text-ink-600 border-b border-line">
+                  <tr>
+                    <th className="p-2.5 font-semibold">Product Name</th>
+                    <th className="p-2.5 font-semibold">Product Code</th>
+                    <th className="p-2.5 font-semibold text-right">Unit Price</th>
+                    <th className="p-2.5 font-semibold text-right">Qty</th>
+                    <th className="p-2.5 font-semibold text-right">Total</th>
+                    <th className="p-2.5 font-semibold text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {productsList.map(p => (
+                    <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="p-2.5 font-semibold text-ink">{p.name}</td>
+                      <td className="p-2.5 text-ink-500 font-mono">{p.code}</td>
+                      <td className="p-2.5 text-right font-medium">{fmtINR(p.unitPrice)}</td>
+                      <td className="p-2.5 text-right font-medium">{p.quantity}</td>
+                      <td className="p-2.5 text-right font-bold text-ink">{fmtINR(p.total)}</td>
+                      <td className="p-2.5 text-right">
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveProduct(p.id)}
+                          className="p-1 text-ink-400 hover:text-red-600 transition-colors rounded cursor-pointer"
+                          title="Remove product"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div
+        key={sec.id}
+        id={sec.id}
+        style={{ order: getSectionOrder(sec.id) }}
+        className="bg-white border border-line rounded-xl shadow-xs overflow-hidden"
+      >
+        <div className="p-4 border-b border-line bg-[#FAFAFA] flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Layers size={16} className="text-primary" />
+            <h3 className="text-[14.5px] font-bold text-ink uppercase tracking-wide">{sec.label}</h3>
+            <span className="rounded-full px-2 py-0.5 text-[11px] font-bold bg-slate-200 text-ink-700">0</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => toast.info(`Add new entry to ${sec.label}`)}
+            className="btn-secondary h-7 px-3 text-[12px] font-medium flex items-center gap-1 cursor-pointer text-primary border-primary/30 hover:bg-primary/5"
+          >
+            <Plus size={12} />
+            <span>Add {sec.label}</span>
+          </button>
+        </div>
+        <div className="p-6 text-center text-[13px] text-ink-400 bg-white">
+          No records found
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="flex flex-col h-[calc(100vh-64px)] bg-[#F5F7FA] -mx-3 sm:-mx-[18px] -mt-2.5 -mb-6">
@@ -1482,20 +1948,38 @@ export default function DealDetail({ id, onClose, onEdit }) {
               <span className="text-primary font-semibold">{fmtINR(deal.amount)}</span>
             </h1>
             
-            <div className="flex flex-wrap items-center gap-1.5 mt-1">
+            <div className="flex flex-wrap items-center gap-1.5 mt-1.5 relative">
               {tagsList.map(t => (
-                <span key={t} className="inline-flex items-center gap-1 text-[11px] font-medium bg-slate-100 text-ink-600 px-2 py-0.5 rounded-full border border-line">
-                  <span>{t}</span>
-                  <button type="button" onClick={() => handleRemoveTag(t)} className="hover:text-red-600"><X size={10} /></button>
-                </span>
+                <ArrowTagBadge
+                  key={t}
+                  name={t}
+                  color={tagColorMap[t] || '#64748B'}
+                  onRemove={() => handleRemoveTag(t)}
+                />
               ))}
-              <button
-                type="button"
-                onClick={() => setTagModalOpen(true)}
-                className="flex items-center gap-1 text-[11.5px] text-ink-500 hover:text-primary transition-colors cursor-pointer ml-1"
-              >
-                <Tag size={11} /> <span>+ Add Tags</span>
-              </button>
+              <div className="relative">
+                <button
+                  ref={addTagsBtnRef}
+                  type="button"
+                  onClick={() => setAddTagsDropdownOpen(prev => !prev)}
+                  className="flex items-center gap-1 text-[11.5px] text-ink-500 hover:text-primary transition-colors cursor-pointer ml-1 py-0.5 px-1.5 rounded hover:bg-slate-100"
+                  title="Add Tags"
+                >
+                  <Tag size={12} fill="#64748B" className="text-slate-500" />
+                  <span className="font-medium">+ Add Tags</span>
+                </button>
+
+                {/* Add Tags Dropdown matching Screenshots 3, 4, 5 */}
+                <AddTagsDropdown
+                  isOpen={addTagsDropdownOpen}
+                  onClose={() => setAddTagsDropdownOpen(false)}
+                  anchorRef={addTagsBtnRef}
+                  dealTags={tagsList}
+                  allTags={allTags}
+                  onSaveTags={handleSaveDealTags}
+                  onOpenManageTags={() => setManageTagsModalOpen(true)}
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -1651,58 +2135,88 @@ export default function DealDetail({ id, onClose, onEdit }) {
               }`}
             >
               <div className="pt-4">
-                <div className="px-4 mb-2 text-[12px] font-bold text-ink-500 uppercase tracking-wider">
-                  Related List
+                <div className="px-4 mb-2 text-[12px] font-bold text-ink-500 uppercase tracking-wider flex items-center justify-between">
+                  <span>Related List</span>
+                  <button
+                    type="button"
+                    onClick={() => setOrganizePanelOpen(true)}
+                    className="p-1 text-ink-400 hover:text-primary rounded hover:bg-slate-100 transition-colors cursor-pointer"
+                    title="Organize Potentials Details"
+                  >
+                    <SlidersHorizontal size={13} />
+                  </button>
                 </div>
                 <ul className="text-[13px] text-ink-700">
-                  {[
-                    { id: 'section-notes', label: 'Notes', count: notesList.length, canAdd: true, onAdd: () => setNoteInput('') },
-                    { id: 'section-contact-roles', label: 'Contact Roles', count: contactRolesList.length, canAdd: true, onAdd: () => setContactRolesModalOpen(true) },
-                    { id: 'section-attachments', label: 'Attachments', count: attachmentsList.length, canAdd: true, onAdd: () => setAttachMenuOpen(true) },
-                    { id: 'section-emails', label: 'Emails', count: emailsList.length, canAdd: true, onAdd: () => setEmailModalOpen(true) },
-                    { id: 'section-stage-history', label: 'Stage History', count: stageHistoryList.length, canAdd: false },
-                    { id: 'section-zoho-projects', label: 'Zoho Projects', count: projectsList.length, canAdd: true, onAdd: () => setProjectModalOpen(true) },
-                    { id: 'section-open-activities', label: 'Open Activities', count: totalOpenActivities, canAdd: true, onAdd: () => { setActivityForm({ type: 'Task', title: '', dueDate: todayISO(), ownerId: deal.ownerId || 'u1', priority: 'High', status: 'Open' }); setActivityModalOpen(true); } },
-                    { id: 'section-closed-activities', label: 'Closed Activities', count: totalClosedActivities, canAdd: false },
-                    { id: 'section-zoho-finance', label: 'Zoho Finance', count: totalFinanceRecords, canAdd: true, onAdd: () => handleNewFinance('Invoice') },
-                  ].map(item => (
-                    <li
-                      key={item.id}
-                      className={`group px-4 py-2 cursor-pointer flex items-center justify-between border-l-2 transition-colors ${
-                        activeSection === item.id
-                          ? 'bg-[#EEF2F8] border-primary text-primary font-semibold'
-                          : 'border-transparent hover:bg-[#F3F4F6] text-ink-600'
-                      }`}
-                      onClick={() => scrollToSection(item.id)}
-                    >
-                      <span className="truncate">{item.label}</span>
-                      <div className="flex items-center gap-1 shrink-0">
-                        {item.canAdd && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              item.onAdd?.();
-                            }}
-                            className="opacity-0 group-hover:opacity-100 hover:bg-slate-200 text-ink-400 hover:text-primary rounded p-0.5 transition-all"
-                            title={`Add ${item.label}`}
-                          >
-                            <Plus size={13} />
-                          </button>
-                        )}
-                        {item.count !== undefined && item.count > 0 && (
-                          <span className={`rounded-full px-1.5 py-0.5 text-[10.5px] font-bold leading-none ${
-                            activeSection === item.id ? 'bg-primary text-white' : 'bg-slate-200 text-ink-700'
-                          }`}>
-                            {item.count}
-                          </span>
-                        )}
-                      </div>
-                    </li>
-                  ))}
+                  {organizeSections.filter(s => s.visible).map(sec => {
+                    const item = {
+                      id: sec.id,
+                      label: sec.label,
+                      count: sec.id === 'section-notes' ? notesList.length :
+                             sec.id === 'section-contact-roles' ? contactRolesList.length :
+                             sec.id === 'section-attachments' ? attachmentsList.length :
+                             sec.id === 'section-emails' ? emailsList.length :
+                             sec.id === 'section-stage-history' ? stageHistoryList.length :
+                             sec.id === 'section-zoho-projects' ? projectsList.length :
+                             sec.id === 'section-open-activities' ? totalOpenActivities :
+                             sec.id === 'section-closed-activities' ? totalClosedActivities :
+                             sec.id === 'section-zoho-finance' ? totalFinanceRecords :
+                             sec.id === 'section-products' ? productsList.length :
+                             0,
+                      canAdd: ['section-notes', 'section-contact-roles', 'section-attachments', 'section-emails', 'section-zoho-projects', 'section-open-activities', 'section-zoho-finance', 'section-products'].includes(sec.id),
+                      onAdd: () => {
+                        if (sec.id === 'section-notes') setNoteInput('');
+                        else if (sec.id === 'section-contact-roles') setContactRolesModalOpen(true);
+                        else if (sec.id === 'section-attachments') setAttachMenuOpen(true);
+                        else if (sec.id === 'section-emails') setEmailModalOpen(true);
+                        else if (sec.id === 'section-zoho-projects') setProjectModalOpen(true);
+                        else if (sec.id === 'section-open-activities') {
+                          setActivityForm({ type: 'Task', title: '', dueDate: todayISO(), ownerId: deal.ownerId || 'u1', priority: 'High', status: 'Open' });
+                          setActivityModalOpen(true);
+                        }
+                        else if (sec.id === 'section-zoho-finance') handleNewFinance('Invoice');
+                        else if (sec.id === 'section-products') setProductModalOpen(true);
+                      }
+                    };
+
+                    return (
+                      <li
+                        key={item.id}
+                        className={`group px-4 py-2 cursor-pointer flex items-center justify-between border-l-2 transition-colors ${
+                          activeSection === item.id
+                            ? 'bg-[#EEF2F8] border-primary text-primary font-semibold'
+                            : 'border-transparent hover:bg-[#F3F4F6] text-ink-600'
+                        }`}
+                        onClick={() => scrollToSection(item.id)}
+                      >
+                        <span className="truncate">{item.label}</span>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {item.canAdd && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                item.onAdd?.();
+                              }}
+                              className="opacity-0 group-hover:opacity-100 hover:bg-slate-200 text-ink-400 hover:text-primary rounded p-0.5 transition-all"
+                              title={`Add ${item.label}`}
+                            >
+                              <Plus size={13} />
+                            </button>
+                          )}
+                          {item.count !== undefined && item.count > 0 && (
+                            <span className={`rounded-full px-1.5 py-0.5 text-[10.5px] font-bold leading-none ${
+                              activeSection === item.id ? 'bg-primary text-white' : 'bg-slate-200 text-ink-700'
+                            }`}>
+                              {item.count}
+                            </span>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
                   <li
                     className="px-4 py-2 cursor-pointer flex items-center justify-between text-primary hover:bg-[#EEF2F8] transition-colors font-medium border-l-2 border-transparent"
-                    onClick={() => setAddRelatedListOpen(true)}
+                    onClick={() => setOrganizePanelOpen(true)}
                   >
                     <div className="flex items-center gap-1.5 text-[13px]">
                       <Plus size={14} />
@@ -1739,28 +2253,38 @@ export default function DealDetail({ id, onClose, onEdit }) {
                 <div className="mt-5 pt-3 border-t border-line/60">
                   <div className="px-4 mb-2 text-[12px] font-bold text-ink-500 uppercase tracking-wider flex items-center justify-between">
                     <span>Links</span>
-                    <button
-                      type="button"
-                      onClick={() => setAddLinkModalOpen(true)}
-                      className="text-primary hover:text-primary-dark p-0.5 rounded hover:bg-slate-100"
-                      title="Add Link"
-                    >
-                      <Plus size={13} />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setManageLinksModalOpen(true)}
+                        className="text-ink-400 hover:text-primary p-0.5 rounded hover:bg-slate-100 cursor-pointer"
+                        title="Manage Link"
+                      >
+                        <Settings2 size={13} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setManageLinksModalOpen(true)}
+                        className="text-primary hover:text-primary-dark p-0.5 rounded hover:bg-slate-100 cursor-pointer"
+                        title="Add Link"
+                      >
+                        <Plus size={13} />
+                      </button>
+                    </div>
                   </div>
                   <ul className="text-[12.5px] text-ink-600 space-y-1 px-4">
                     {dealLinks.length === 0 ? (
                       <li className="text-[11.5px] text-ink-400 py-0.5 italic">No links added</li>
                     ) : (
                       dealLinks.map((lnk, idx) => (
-                        <li key={idx} className="flex items-center justify-between py-0.5">
+                        <li key={lnk.id || idx} className="flex items-center justify-between py-0.5">
                           <a
                             href={lnk.url.startsWith('http') ? lnk.url : `https://${lnk.url}`}
                             target="_blank"
                             rel="noreferrer"
                             className="text-primary hover:underline truncate flex items-center gap-1"
                           >
-                            <span className="truncate">{lnk.title}</span>
+                            <span className="truncate">{lnk.name || lnk.title}</span>
                             <ExternalLink size={10} className="shrink-0 opacity-70" />
                           </a>
                         </li>
@@ -1769,11 +2293,11 @@ export default function DealDetail({ id, onClose, onEdit }) {
                     <li className="pt-1">
                       <button
                         type="button"
-                        onClick={() => setAddLinkModalOpen(true)}
+                        onClick={() => setManageLinksModalOpen(true)}
                         className="text-[12px] text-primary hover:underline flex items-center gap-1 font-medium cursor-pointer"
                       >
                         <Plus size={12} />
-                        <span>Add Link</span>
+                        <span>Manage Link</span>
                       </button>
                     </li>
                   </ul>
@@ -1783,10 +2307,10 @@ export default function DealDetail({ id, onClose, onEdit }) {
 
             {/* Right Details Panel */}
             <div ref={scrollRef} className="flex-1 overflow-y-auto thin-scroll p-4 sm:p-6 bg-[#F5F7FA]">
-              <div className="max-w-[1080px] mx-auto space-y-5">
+              <div className="max-w-[1080px] mx-auto flex flex-col gap-5">
 
                 {/* A. Stage Chevron Progress Bar (Horizontal Scroll with Left & Right Arrows) */}
-                <div className="bg-white border border-line rounded-xl p-3 shadow-xs">
+                <div style={{ order: -100 }} className="bg-white border border-line rounded-xl p-3 shadow-xs">
                   {/* Top Start & Closing Dates (matching Screenshot 1) */}
                   <div className="flex items-center justify-between px-1 mb-2">
                     <div>
@@ -1885,7 +2409,7 @@ export default function DealDetail({ id, onClose, onEdit }) {
                 </div>
 
                 {/* Top Two-Column Overview & Zia Score Card (Matching Screenshot 1) */}
-                <div className="bg-white border border-line rounded-xl p-5 shadow-xs grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+                <div style={{ order: -90 }} className="bg-white border border-line rounded-xl p-5 shadow-xs grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
                   {/* LEFT: Key Deal Properties */}
                   <div className="space-y-3 text-[13px]">
                     <div className="grid grid-cols-[160px_1fr] items-center gap-4">
@@ -1894,7 +2418,14 @@ export default function DealDetail({ id, onClose, onEdit }) {
                     </div>
                     <div className="grid grid-cols-[160px_1fr] items-center gap-4">
                       <span className="text-ink-500 text-right">Deal Owner</span>
-                      <span className="text-ink font-medium">{userName(deal.ownerId) || 'Marketing Department'}</span>
+                      <div>
+                        <DealOwnerDisplay
+                          deal={deal}
+                          users={users}
+                          userName={userName}
+                          onOpenChangeOwner={() => setChangeOwnerModalOpen(true)}
+                        />
+                      </div>
                     </div>
                     <div className="grid grid-cols-[160px_1fr] items-center gap-4">
                       <span className="text-ink-500 text-right">Lead Source</span>
@@ -1905,16 +2436,25 @@ export default function DealDetail({ id, onClose, onEdit }) {
                           options={LEAD_SOURCE_OPTIONS}
                           colorMap={LEAD_SOURCE_COLORS}
                           hasSearch={true}
+                          displayAsBadge={true}
                           onSave={(val) => handleUpdate('source', val)}
                         />
                       </div>
                     </div>
-                    <div className="grid grid-cols-[160px_1fr] items-center gap-4">
-                      <span className="text-ink-500 text-right flex items-center justify-end gap-1">
+                    <div className="grid grid-cols-[160px_1fr] items-start gap-4 py-0.5">
+                      <span className="text-ink-500 text-right flex items-center justify-end gap-1 mt-1">
                         <span>Categories</span>
                         <span title="Deal Categories" className="text-ink-400 cursor-help"><Info size={13} /></span>
                       </span>
-                      <span className="text-ink font-medium">{deal.categories || 'translations'}</span>
+                      <div>
+                        <ZohoDropdownField
+                          label="Categories"
+                          value={deal.categories || 'translations'}
+                          options={CATEGORIES_OPTIONS}
+                          hasSearch={true}
+                          onSave={(val) => handleUpdate('categories', val)}
+                        />
+                      </div>
                     </div>
                     <div className="grid grid-cols-[160px_1fr] items-center gap-4">
                       <span className="text-ink-500 text-right">Submission Status</span>
@@ -1925,13 +2465,23 @@ export default function DealDetail({ id, onClose, onEdit }) {
                           options={SUBMISSION_STATUS_OPTIONS}
                           colorMap={SUBMISSION_STATUS_COLORS}
                           hasSearch={false}
+                          displayAsBadge={true}
                           onSave={(val) => handleUpdate('submissionStatus', val)}
                         />
                       </div>
                     </div>
-                    <div className="grid grid-cols-[160px_1fr] items-center gap-4">
-                      <span className="text-ink-500 text-right">Territory</span>
-                      <span className="text-ink-400 font-medium">{deal.territory || '—'}</span>
+                    <div className="grid grid-cols-[160px_1fr] items-start gap-4 py-0.5">
+                      <span className="text-ink-500 text-right mt-1">Territory</span>
+                      <div>
+                        <ZohoDropdownField
+                          label="Territory"
+                          value={deal.territory || ''}
+                          placeholder="-None-"
+                          options={TERRITORY_OPTIONS}
+                          hasSearch={true}
+                          onSave={(val) => handleUpdate('territory', val)}
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -1998,7 +2548,7 @@ export default function DealDetail({ id, onClose, onEdit }) {
                 </div>
 
                 {/* Collapsible Hide Details / Show Details Toggle Button */}
-                <div className="pt-1">
+                <div style={{ order: -85 }} className="pt-1">
                   <button
                     type="button"
                     onClick={() => setDetailsHidden(prev => !prev)}
@@ -2011,7 +2561,7 @@ export default function DealDetail({ id, onClose, onEdit }) {
 
                 {/* Detailed Field Sections (Collapsible) */}
                 {!detailsHidden && (
-                  <>
+                  <div style={{ order: -80 }} className="flex flex-col gap-5">
                     {/* B. Deal Information Section (Matching Screenshots 2 & 3) */}
                     <div id="section-deal-info" className="bg-white border border-line rounded-xl shadow-xs overflow-visible">
                       <div className="p-4 border-b border-line bg-[#FAFAFA] flex items-center justify-between rounded-t-xl">
@@ -2021,7 +2571,17 @@ export default function DealDetail({ id, onClose, onEdit }) {
                       <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-1">
                         {/* LEFT COLUMN */}
                         <div>
-                          <EditableField label="Deal Owner" value={userName(deal.ownerId) || 'Marketing Department'} type="select" options={users.map(u => ({ value: u.name, label: u.name }))} onSave={val => { const u = users.find(x => x.name === val); if (u) handleUpdate('ownerId', u.id); }} />
+                          <div className="grid grid-cols-[160px_1fr] items-center gap-4 text-[13px] group py-1.5 min-h-[32px]">
+                            <span className="text-ink-500 text-right mt-[2px] select-none">Deal Owner</span>
+                            <div>
+                              <DealOwnerDisplay
+                                deal={deal}
+                                users={users}
+                                userName={userName}
+                                onOpenChangeOwner={() => setChangeOwnerModalOpen(true)}
+                              />
+                            </div>
+                          </div>
                           <EditableField label="Incentive Amount" value={deal.incentiveAmount} info="Incentive Amount" onSave={val => handleUpdate('incentiveAmount', val)} />
                           <EditableField label="Deal Aging" value={Math.max(1, Math.round((Date.now() - new Date(deal.createdOn || Date.now())) / 86400000)) + ' days ago'} readOnly />
                           <EditableField label="Deal Name" value={deal.name} onSave={val => handleUpdate('name', val)} />
@@ -2134,8 +2694,8 @@ export default function DealDetail({ id, onClose, onEdit }) {
                     </div>
 
                     {/* C. Deal Other Details Section (Matching Screenshots 2 & 5) */}
-                    <div id="section-other-details" className="bg-white border border-line rounded-xl shadow-xs overflow-hidden">
-                      <div className="p-4 border-b border-line bg-[#FAFAFA] flex items-center justify-between">
+                    <div id="section-other-details" className="bg-white border border-line rounded-xl shadow-xs overflow-visible">
+                      <div className="p-4 border-b border-line bg-[#FAFAFA] flex items-center justify-between rounded-t-xl">
                         <h3 className="text-[14.5px] font-bold text-ink uppercase tracking-wide">Deal other Details</h3>
                       </div>
 
@@ -2153,7 +2713,19 @@ export default function DealDetail({ id, onClose, onEdit }) {
                           <EditableField label="Probability (%)" value={deal.probability || 65} type="number" onSave={val => handleUpdate('probability', Number(val) || 0)} />
                           <EditableField label="Revenue projections Prediction" value={deal.revenueProjections} onSave={val => handleUpdate('revenueProjections', val)} />
                           <EditableField label="Expected Revenue" value={deal.expectedRevenue ? fmtINR(deal.expectedRevenue) : ''} readOnly />
-                          <EditableField label="Forecast Category" value={deal.forecastCategory || 'Committed'} badgeClass="inline-flex px-3 py-0.5 rounded-full text-[11.5px] font-semibold bg-[#C026D3] text-white" type="select" options={FORECAST_CATEGORY_OPTIONS} onSave={val => handleUpdate('forecastCategory', val)} />
+                          <div className="grid grid-cols-[160px_1fr] items-start gap-4 text-[13px] group py-1.5 min-h-[32px]">
+                            <span className="text-ink-500 text-right mt-[2px] select-none">Forecast Category</span>
+                            <div>
+                              <ZohoDropdownField
+                                label="Forecast Category"
+                                value={deal.forecastCategory || 'Committed'}
+                                options={FORECAST_CATEGORY_OPTIONS}
+                                colorMap={FORECAST_CATEGORY_COLORS}
+                                hasSearch={false}
+                                onSave={(val) => handleUpdate('forecastCategory', val)}
+                              />
+                            </div>
+                          </div>
                         </div>
 
                         {/* RIGHT COLUMN */}
@@ -2220,11 +2792,11 @@ export default function DealDetail({ id, onClose, onEdit }) {
                         </div>
                       </div>
                     </div>
-                  </>
+                  </div>
                 )}
 
                 {/* F. Scoring Rules Section (Matching Screenshot 4) */}
-                <div id="section-scoring-rules" className="bg-white border border-line rounded-xl shadow-xs overflow-hidden">
+                <div id="section-scoring-rules" style={{ order: -70 }} className="bg-white border border-line rounded-xl shadow-xs overflow-hidden">
                   <div className="p-4 border-b border-line bg-[#FAFAFA] flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Award size={16} className="text-primary" />
@@ -2297,8 +2869,9 @@ export default function DealDetail({ id, onClose, onEdit }) {
                   )}
                 </div>
 
-                {/* G. Notes Section (Matching Screenshot 4) */}
-                <div id="section-notes" className="bg-white border border-line rounded-xl shadow-xs overflow-hidden">
+                {/* G. Notes Section (Matching Screenshot 3) */}
+                {isSectionVisible('section-notes') && (
+                  <div id="section-notes" style={{ order: getSectionOrder('section-notes') }} className="bg-white border border-line rounded-xl shadow-xs overflow-visible">
                   <div className="p-4 border-b border-line bg-[#FAFAFA] flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <h3 className="text-[14.5px] font-bold text-ink uppercase tracking-wide">Notes</h3>
@@ -2306,15 +2879,33 @@ export default function DealDetail({ id, onClose, onEdit }) {
                         {notesList.length}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={notesFilter}
-                        onChange={e => setNotesFilter(e.target.value)}
-                        className="h-7 px-2.5 text-[12px] font-medium bg-white border border-line rounded-md text-ink-600 cursor-pointer focus:outline-none"
+                    <div className="relative" ref={notesFilterRef}>
+                      <button
+                        type="button"
+                        onClick={() => setNotesDropdownOpen(prev => !prev)}
+                        className="h-7 px-2.5 text-[12px] font-medium bg-white border border-line rounded-md text-ink-700 hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer shadow-2xs"
                       >
-                        <option value="Recent Last">Recent Last</option>
-                        <option value="Oldest First">Oldest First</option>
-                      </select>
+                        <span>{notesFilter}</span>
+                        <ChevronDown size={13} className="text-ink-400" />
+                      </button>
+                      {notesDropdownOpen && (
+                        <div className="absolute right-0 top-full mt-1 w-36 bg-white border border-line rounded-md shadow-lg z-50 py-1 text-[12.5px]">
+                          {['Recent Last', 'Recent First'].map((opt) => (
+                            <button
+                              key={opt}
+                              type="button"
+                              onClick={() => {
+                                setNotesFilter(opt);
+                                setNotesDropdownOpen(false);
+                              }}
+                              className="w-full text-left px-3 py-1.5 hover:bg-slate-50 text-ink-800 flex items-center justify-between cursor-pointer"
+                            >
+                              <span>{opt}</span>
+                              {notesFilter === opt && <Check size={13} className="text-primary font-bold" />}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -2323,7 +2914,7 @@ export default function DealDetail({ id, onClose, onEdit }) {
                       <textarea
                         className="input-field flex-1 text-[13px] p-2.5 resize-y"
                         rows="2"
-                        placeholder="Add a new note to this deal..."
+                        placeholder="Add a note"
                         value={noteInput}
                         onChange={e => setNoteInput(e.target.value)}
                       />
@@ -2343,7 +2934,10 @@ export default function DealDetail({ id, onClose, onEdit }) {
                       </div>
                     ) : (
                       <div className="space-y-3 pt-2">
-                        {(notesFilter === 'Oldest First' ? [...notesList].reverse() : notesList).map(n => (
+                        {(notesFilter === 'Recent First'
+                          ? [...notesList].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+                          : [...notesList].sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0))
+                        ).map(n => (
                           <div key={n.id} className="p-3.5 bg-[#F9FAFB] border border-line rounded-xl space-y-1.5 text-[13px]">
                             <div className="flex items-center justify-between text-ink-400 text-[11.5px]">
                               <span className="font-semibold text-ink-600">{n.author || 'User'} · {fmtDate(n.createdAt?.slice(0, 10))}</span>
@@ -2389,9 +2983,11 @@ export default function DealDetail({ id, onClose, onEdit }) {
                     )}
                   </div>
                 </div>
+              )}
 
                 {/* H. Contact Roles Section (Matching Screenshot 4) */}
-                <div id="section-contact-roles" className="bg-white border border-line rounded-xl shadow-xs overflow-hidden">
+                {isSectionVisible('section-contact-roles') && (
+                  <div id="section-contact-roles" style={{ order: getSectionOrder('section-contact-roles') }} className="bg-white border border-line rounded-xl shadow-xs overflow-hidden">
                   <div className="p-4 border-b border-line bg-[#FAFAFA] flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <h3 className="text-[14.5px] font-bold text-ink uppercase tracking-wide">Contact Roles</h3>
@@ -2458,9 +3054,11 @@ export default function DealDetail({ id, onClose, onEdit }) {
                     </table>
                   </div>
                 </div>
+              )}
 
                 {/* I. Attachments Section (Matching Screenshot 4) */}
-                <div id="section-attachments" className="bg-white border border-line rounded-xl shadow-xs overflow-hidden">
+                {isSectionVisible('section-attachments') && (
+                  <div id="section-attachments" style={{ order: getSectionOrder('section-attachments') }} className="bg-white border border-line rounded-xl shadow-xs overflow-hidden">
                   <div className="p-4 border-b border-line bg-[#FAFAFA] flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <h3 className="text-[14.5px] font-bold text-ink uppercase tracking-wide">Attachments</h3>
@@ -2579,9 +3177,11 @@ export default function DealDetail({ id, onClose, onEdit }) {
                     </table>
                   </div>
                 </div>
+              )}
 
                 {/* J. Emails Section (Matching Screenshot 7) */}
-                <div id="section-emails" className="bg-white border border-line rounded-xl shadow-xs overflow-hidden">
+                {isSectionVisible('section-emails') && (
+                  <div id="section-emails" style={{ order: getSectionOrder('section-emails') }} className="bg-white border border-line rounded-xl shadow-xs overflow-hidden">
                   <div className="p-4 border-b border-line bg-[#FAFAFA] flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-4">
                       <div className="flex items-center gap-2">
@@ -2676,10 +3276,12 @@ export default function DealDetail({ id, onClose, onEdit }) {
                     )}
                   </div>
                 </div>
+              )}
 
-                {/* K. Stage History Section (Matching Screenshot 7) */}
-                <div id="section-stage-history" className="bg-white border border-line rounded-xl shadow-xs overflow-hidden">
-                  <div className="p-4 border-b border-line bg-[#FAFAFA] flex items-center justify-between">
+                {/* K. Stage History Section (Matching Screenshot 2) */}
+                {isSectionVisible('section-stage-history') && (
+                  <div id="section-stage-history" style={{ order: getSectionOrder('section-stage-history') }} className="bg-white border border-line rounded-xl shadow-xs overflow-visible">
+                  <div className="p-4 border-b border-line bg-[#FAFAFA] flex items-center justify-between relative">
                     <div className="flex items-center gap-2">
                       <h3 className="text-[14.5px] font-bold text-ink uppercase tracking-wide">Stage History</h3>
                       <span className="rounded-full px-2 py-0.5 text-[11px] font-bold bg-slate-200 text-ink-700">
@@ -2687,15 +3289,104 @@ export default function DealDetail({ id, onClose, onEdit }) {
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="relative" ref={customizePopupRef}>
                       <button
                         type="button"
-                        onClick={() => setStageHistoryColsOpen(true)}
+                        onClick={() => {
+                          setTempStageCols(stageHistoryCols);
+                          setCustomizeSearch('');
+                          setCustomizePopupOpen(prev => !prev);
+                        }}
                         className="p-1.5 text-ink-500 hover:text-primary rounded hover:bg-slate-200 transition-colors cursor-pointer"
-                        title="Manage Stage History Columns"
+                        title="Show Customize List Popup"
                       >
-                        <Settings2 size={15} />
+                        <SlidersHorizontal size={15} />
                       </button>
+
+                      {/* Customize List Popup - Matching Screenshot 2 */}
+                      {customizePopupOpen && (
+                        <div className="absolute right-0 top-full mt-2 w-72 bg-white border border-[#CBD5E1] rounded-lg shadow-xl z-50 overflow-hidden text-[13px]">
+                          {/* Search Bar */}
+                          <div className="p-2.5 border-b border-slate-100">
+                            <div className="relative">
+                              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                              <input
+                                type="text"
+                                value={customizeSearch}
+                                onChange={(e) => setCustomizeSearch(e.target.value)}
+                                placeholder="Search"
+                                className="w-full h-8 pl-8 pr-2.5 text-[12.5px] bg-white border border-[#CBD5E1] rounded outline-none focus:border-[#4361EE] text-slate-800"
+                                autoFocus
+                              />
+                            </div>
+                          </div>
+
+                          {/* Scrollable Checkbox List */}
+                          <div className="max-h-60 overflow-y-auto thin-scroll p-2 space-y-1">
+                            {ALL_STAGE_HISTORY_FIELDS
+                              .filter(f => f.label.toLowerCase().includes(customizeSearch.toLowerCase()))
+                              .map(field => {
+                                const isMandatory = field.mandatory;
+                                const isChecked = isMandatory || tempStageCols.includes(field.id);
+                                return (
+                                  <label
+                                    key={field.id}
+                                    className={`flex items-center gap-2.5 px-2 py-1.5 rounded transition-colors ${
+                                      isMandatory ? 'cursor-not-allowed opacity-80' : 'cursor-pointer hover:bg-slate-50'
+                                    }`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      disabled={isMandatory}
+                                      onChange={() => {
+                                        if (isMandatory) return;
+                                        if (isChecked) {
+                                          setTempStageCols(tempStageCols.filter(x => x !== field.id));
+                                        } else {
+                                          setTempStageCols([...tempStageCols, field.id]);
+                                        }
+                                      }}
+                                      className="rounded text-[#4361EE] focus:ring-[#4361EE]/20 w-3.5 h-3.5 cursor-pointer disabled:cursor-not-allowed"
+                                    />
+                                    <span className="text-[13px] text-slate-700">
+                                      {field.label}
+                                      {isMandatory && <span className="text-red-500 ml-0.5">*</span>}
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                          </div>
+
+                          {/* Footer Buttons */}
+                          <div className="p-2.5 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setTempStageCols(stageHistoryCols);
+                                setCustomizePopupOpen(false);
+                              }}
+                              className="px-3 py-1 text-[12.5px] font-medium text-slate-600 hover:bg-slate-200 border border-slate-300 rounded transition-colors cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setStageHistoryCols(tempStageCols);
+                                try {
+                                  localStorage.setItem('deal_stage_history_cols', JSON.stringify(tempStageCols));
+                                } catch (e) {}
+                                setCustomizePopupOpen(false);
+                                toast.success('Stage History columns saved');
+                              }}
+                              className="px-4 py-1 text-[12.5px] font-semibold text-white bg-[#4361EE] hover:bg-[#3451D1] rounded shadow-xs transition-colors cursor-pointer"
+                            >
+                              Save
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -2705,10 +3396,17 @@ export default function DealDetail({ id, onClose, onEdit }) {
                         <tr>
                           {stageHistoryCols.includes('Stage') && <th className="p-2.5 font-semibold">Stage</th>}
                           {stageHistoryCols.includes('Amount') && <th className="p-2.5 font-semibold text-right">Amount</th>}
-                          {stageHistoryCols.includes('Probability') && <th className="p-2.5 font-semibold text-center">Probability</th>}
-                          {stageHistoryCols.includes('Stage Duration (Calendar Days)') && <th className="p-2.5 font-semibold text-center">Stage Duration (Calendar Days)</th>}
+                          {(stageHistoryCols.includes('Probability (%)') || stageHistoryCols.includes('Probability')) && (
+                            <th className="p-2.5 font-semibold text-center">Probability (%)</th>
+                          )}
+                          {stageHistoryCols.includes('Stage Duration (Calendar Days)') && (
+                            <th className="p-2.5 font-semibold text-center">Stage Duration (Calendar Days)</th>
+                          )}
                           {stageHistoryCols.includes('Modified Time') && <th className="p-2.5 font-semibold text-right">Modified Time</th>}
                           {stageHistoryCols.includes('Modified By') && <th className="p-2.5 font-semibold">Modified By</th>}
+                          {stageHistoryCols.includes('Expected Revenue') && <th className="p-2.5 font-semibold text-right">Expected Revenue</th>}
+                          {stageHistoryCols.includes('Closing Date') && <th className="p-2.5 font-semibold text-center">Closing Date</th>}
+                          {stageHistoryCols.includes('Moved To') && <th className="p-2.5 font-semibold">Moved To</th>}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-line">
@@ -2728,10 +3426,10 @@ export default function DealDetail({ id, onClose, onEdit }) {
                               </td>
                             )}
                             {stageHistoryCols.includes('Amount') && (
-                              <td className="p-2.5 text-right font-semibold">{fmtINR(h.amount)}</td>
+                              <td className="p-2.5 text-right font-semibold">{fmtINR(h.amount ?? deal?.amount ?? 0)}</td>
                             )}
-                            {stageHistoryCols.includes('Probability') && (
-                              <td className="p-2.5 text-center font-bold text-ink-700">{h.probability}%</td>
+                            {(stageHistoryCols.includes('Probability (%)') || stageHistoryCols.includes('Probability')) && (
+                              <td className="p-2.5 text-center font-bold text-ink-700">{h.probability ?? deal?.probability ?? 0}%</td>
                             )}
                             {stageHistoryCols.includes('Stage Duration (Calendar Days)') && (
                               <td className="p-2.5 text-center font-medium text-ink-600">
@@ -2741,10 +3439,23 @@ export default function DealDetail({ id, onClose, onEdit }) {
                               </td>
                             )}
                             {stageHistoryCols.includes('Modified Time') && (
-                              <td className="p-2.5 text-right text-ink-500 font-mono text-[12px]">{h.modifiedTime}</td>
+                              <td className="p-2.5 text-right text-ink-500 font-mono text-[12px]">{h.modifiedTime || fmtDate(deal?.modifiedAt || deal?.createdAt)}</td>
                             )}
                             {stageHistoryCols.includes('Modified By') && (
-                              <td className="p-2.5 text-ink-600">{userName(h.modifiedBy)}</td>
+                              <td className="p-2.5 text-ink-600">{userName(h.modifiedBy || deal?.ownerId)}</td>
+                            )}
+                            {stageHistoryCols.includes('Expected Revenue') && (
+                              <td className="p-2.5 text-right font-medium text-ink-700">
+                                {fmtINR(h.expectedRevenue ?? Math.round(((h.amount ?? deal?.amount ?? 0) * (h.probability ?? deal?.probability ?? 0)) / 100))}
+                              </td>
+                            )}
+                            {stageHistoryCols.includes('Closing Date') && (
+                              <td className="p-2.5 text-center text-ink-600 font-mono text-[12px]">{h.closingDate || deal?.closingDate || '—'}</td>
+                            )}
+                            {stageHistoryCols.includes('Moved To') && (
+                              <td className="p-2.5 text-ink-600 font-medium">
+                                {h.movedTo || (idx < stageHistoryList.length - 1 ? stageHistoryList[idx + 1]?.stage : 'Current Stage')}
+                              </td>
                             )}
                           </tr>
                         ))}
@@ -2752,27 +3463,48 @@ export default function DealDetail({ id, onClose, onEdit }) {
                     </table>
                   </div>
                 </div>
+              )}
 
-                {/* L. Zoho Projects Section (Matching Screenshot 7 & 8) */}
-                <div id="section-zoho-projects" className="bg-white border border-line rounded-xl shadow-xs overflow-hidden">
+                {/* L. Zoho Projects Section (Matching Screenshot 1) */}
+                {isSectionVisible('section-zoho-projects') && (
+                  <div id="section-zoho-projects" style={{ order: getSectionOrder('section-zoho-projects') }} className="bg-white border border-line rounded-xl shadow-xs overflow-visible">
                   <div className="p-4 border-b border-line bg-[#FAFAFA] flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
                       <div className="flex items-center gap-2">
                         <FolderGit2 size={16} className="text-primary" />
                         <h3 className="text-[14.5px] font-bold text-ink uppercase tracking-wide">Zoho Projects</h3>
                         <span className="rounded-full px-2 py-0.5 text-[11px] font-bold bg-slate-200 text-ink-700">
-                          {projectsList.length}
+                          {projectsList.filter(p => projectsFilter === 'Archived Projects' ? (p.status === 'Archived' || p.status === 'Completed') : p.status !== 'Archived').length}
                         </span>
                       </div>
-                      <select
-                        value={projectsFilter}
-                        onChange={e => setProjectsFilter(e.target.value)}
-                        className="h-7 px-2 text-[12px] font-medium bg-white border border-line rounded-md text-ink-600 focus:outline-none"
-                      >
-                        <option value="Active Projects">Active Projects</option>
-                        <option value="All Projects">All Projects</option>
-                        <option value="Completed Projects">Completed Projects</option>
-                      </select>
+                      <div className="relative" ref={projectsFilterRef}>
+                        <button
+                          type="button"
+                          onClick={() => setProjectsDropdownOpen(prev => !prev)}
+                          className="h-7 px-2.5 text-[12px] font-medium bg-white border border-line rounded-md text-ink-700 hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                        >
+                          <span>{projectsFilter}</span>
+                          <ChevronDown size={13} className="text-ink-400" />
+                        </button>
+                        {projectsDropdownOpen && (
+                          <div className="absolute left-0 top-full mt-1 w-44 bg-white border border-line rounded-md shadow-lg z-50 py-1 text-[12.5px]">
+                            {['Active Projects', 'Archived Projects'].map((opt) => (
+                              <button
+                                key={opt}
+                                type="button"
+                                onClick={() => {
+                                  setProjectsFilter(opt);
+                                  setProjectsDropdownOpen(false);
+                                }}
+                                className="w-full text-left px-3 py-1.5 hover:bg-slate-50 text-ink-800 flex items-center justify-between cursor-pointer"
+                              >
+                                <span>{opt}</span>
+                                {projectsFilter === opt && <Check size={13} className="text-primary font-bold" />}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <button
@@ -2792,49 +3524,61 @@ export default function DealDetail({ id, onClose, onEdit }) {
                     </div>
                   </div>
 
-                  <div className="p-4 overflow-x-auto">
-                    <table className="w-full text-left text-[13px]">
-                      <thead className="bg-[#F8FAFC] text-ink-600 border-b border-line">
-                        <tr>
-                          <th className="p-2.5 font-semibold">Project Name</th>
-                          <th className="p-2.5 font-semibold">Status</th>
-                          <th className="p-2.5 font-semibold">Progress</th>
-                          <th className="p-2.5 font-semibold">Milestones</th>
-                          <th className="p-2.5 font-semibold">Owner</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-line">
-                        {projectsList.length === 0 ? (
-                          <tr>
-                            <td colSpan={5} className="py-6 text-center text-[13px] text-ink-400">
-                              No records found
-                            </td>
-                          </tr>
-                        ) : (
-                          projectsList.map(prj => (
-                            <tr key={prj.id} className="hover:bg-slate-50 transition-colors">
-                              <td className="p-2.5 font-bold text-ink">{prj.name}</td>
-                              <td className="p-2.5"><span className="badge-blue text-[11px] px-2 py-0.5 rounded">{prj.status}</span></td>
-                              <td className="p-2.5">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-24 bg-slate-100 rounded-full h-2 overflow-hidden">
-                                    <div className="bg-primary h-2 rounded-full" style={{ width: `${prj.progress}%` }} />
-                                  </div>
-                                  <span className="text-[11.5px] font-bold text-ink">{prj.progress}%</span>
-                                </div>
-                              </td>
-                              <td className="p-2.5 text-ink-600">{prj.milestones} Active</td>
-                              <td className="p-2.5 text-ink-600">{prj.owner}</td>
+                  {(() => {
+                    const filteredPrjs = projectsList.filter(p =>
+                      projectsFilter === 'Archived Projects'
+                        ? (p.status === 'Archived' || p.status === 'Completed')
+                        : p.status !== 'Archived'
+                    );
+
+                    if (filteredPrjs.length === 0) {
+                      return (
+                        <div className="py-8 px-4 text-center text-[13.5px] text-ink-400 bg-white">
+                          No records found
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="p-4 overflow-x-auto">
+                        <table className="w-full text-left text-[13px]">
+                          <thead className="bg-[#F8FAFC] text-ink-600 border-b border-line">
+                            <tr>
+                              <th className="p-2.5 font-semibold">Project Name</th>
+                              <th className="p-2.5 font-semibold">Status</th>
+                              <th className="p-2.5 font-semibold">Progress</th>
+                              <th className="p-2.5 font-semibold">Milestones</th>
+                              <th className="p-2.5 font-semibold">Owner</th>
                             </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                          </thead>
+                          <tbody className="divide-y divide-line">
+                            {filteredPrjs.map(prj => (
+                              <tr key={prj.id} className="hover:bg-slate-50 transition-colors">
+                                <td className="p-2.5 font-bold text-ink">{prj.name}</td>
+                                <td className="p-2.5"><span className="badge-blue text-[11px] px-2 py-0.5 rounded">{prj.status}</span></td>
+                                <td className="p-2.5">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-24 bg-slate-100 rounded-full h-2 overflow-hidden">
+                                      <div className="bg-primary h-2 rounded-full" style={{ width: `${prj.progress}%` }} />
+                                    </div>
+                                    <span className="text-[11.5px] font-bold text-ink">{prj.progress}%</span>
+                                  </div>
+                                </td>
+                                <td className="p-2.5 text-ink-600">{prj.milestones} Active</td>
+                                <td className="p-2.5 text-ink-600">{prj.owner}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })()}
                 </div>
+              )}
 
                 {/* H. Open Activities Section */}
-                <div id="section-open-activities" className="bg-white border border-line rounded-xl shadow-xs overflow-hidden">
+                {isSectionVisible('section-open-activities') && (
+                  <div id="section-open-activities" style={{ order: getSectionOrder('section-open-activities') }} className="bg-white border border-line rounded-xl shadow-xs overflow-hidden">
                   <div
                     className="p-4 bg-[#FAFAFA] border-b border-line flex flex-wrap items-center justify-between gap-3 cursor-pointer select-none group"
                     onClick={() => setOpenActivitiesOpen(prev => !prev)}
@@ -3022,9 +3766,11 @@ export default function DealDetail({ id, onClose, onEdit }) {
                     </div>
                   )}
                 </div>
+              )}
 
                 {/* I. Closed Activities Section (Calls Integration & Views: Tab, Column, Chronological) */}
-                <div id="section-closed-activities" className="bg-white border border-line rounded-xl shadow-xs overflow-hidden">
+                {isSectionVisible('section-closed-activities') && (
+                  <div id="section-closed-activities" style={{ order: getSectionOrder('section-closed-activities') }} className="bg-white border border-line rounded-xl shadow-xs overflow-hidden">
                   <div
                     className="p-4 bg-[#FAFAFA] border-b border-line flex flex-wrap items-center justify-between gap-3 cursor-pointer select-none group"
                     onClick={() => setClosedActivitiesOpen(prev => !prev)}
@@ -3405,11 +4151,11 @@ export default function DealDetail({ id, onClose, onEdit }) {
                     </div>
                   )}
                 </div>
-
-
+              )}
 
                 {/* Zoho Finance Section */}
-                <div id="section-zoho-finance" className="bg-white border border-line rounded-xl shadow-xs overflow-hidden mb-12">
+                {isSectionVisible('section-zoho-finance') && (
+                  <div id="section-zoho-finance" style={{ order: getSectionOrder('section-zoho-finance') }} className="bg-white border border-line rounded-xl shadow-xs overflow-hidden mb-12">
                   <div className="p-4 border-b border-line bg-[#FAFAFA] flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <DollarSign size={16} className="text-primary" />
@@ -3586,12 +4332,16 @@ export default function DealDetail({ id, onClose, onEdit }) {
                     </div>
                   </div>
                 </div>
+              )}
+
+                {/* Other Dynamically Configured Related Sections (Products, Competitors, Desk, etc.) */}
+                {organizeSections.map(sec => renderGenericSection(sec))}
 
                 {/* Bottom Controls Bar (Matching Screenshot 6) */}
-                <div className="bg-white border border-line rounded-xl p-4 shadow-xs flex flex-wrap items-center justify-between gap-4 mb-8">
+                <div style={{ order: 1000 }} className="bg-white border border-line rounded-xl p-4 shadow-xs flex flex-wrap items-center justify-between gap-4 mb-8">
                   <button
                     type="button"
-                    onClick={() => setAddRelatedListOpen(true)}
+                    onClick={() => setOrganizePanelOpen(true)}
                     className="btn-secondary h-8 px-3 text-[12.5px] font-medium flex items-center gap-1.5 cursor-pointer text-primary border-primary/30 hover:bg-primary/5"
                   >
                     <Plus size={14} />
@@ -3661,74 +4411,9 @@ export default function DealDetail({ id, onClose, onEdit }) {
           </>
         )}
 
-        {/* Timeline Tab Content */}
+        {/* Timeline Tab Content (Matching Reference Screenshot) */}
         {activeTab === 'Timeline' && (
-          <div className="flex-1 p-6 sm:p-8 overflow-y-auto bg-white thin-scroll">
-            <div className="max-w-[850px] mx-auto">
-              <div className="flex items-center justify-between mb-8 border-b border-line pb-4">
-                <div>
-                  <h2 className="text-[18px] font-bold text-ink">Deal Timeline & Audit Trail</h2>
-                  <p className="text-[13px] text-ink-500 mt-0.5">Chronological record of activities, stage changes, calls, and updates.</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => toast.success('Timeline refreshed')}
-                  className="btn-secondary h-8 px-3 text-[12.5px] font-medium"
-                >
-                  Refresh
-                </button>
-              </div>
-
-              <div className="relative border-l-2 border-line/80 ml-4 space-y-8 pb-12">
-                {/* 1. Stage Current */}
-                <div className="relative pl-6">
-                  <div className="absolute left-[-9px] top-1 w-4 h-4 rounded-full bg-primary ring-4 ring-white" />
-                  <div className="text-[14px]">
-                    <span className="font-semibold text-ink">Stage updated to </span>
-                    <strong className="text-primary">{deal.stage}</strong>
-                  </div>
-                  <div className="text-[12px] text-ink-500 mt-0.5">Probability set to {deal.probability}% · {deal.createdTime || 'Recently'}</div>
-                </div>
-
-                {/* 2. Closed Calls in Timeline */}
-                {closedCalls.map(c => (
-                  <div key={c.id} className="relative pl-6">
-                    <div className="absolute left-[-9px] top-1 w-4 h-4 rounded-full bg-emerald-500 ring-4 ring-white" />
-                    <div className="text-[14px]">
-                      <span className="font-semibold text-ink">{userName(c.ownerId)}</span> logged a call:
-                      <button type="button" onClick={() => handleOpenCall(c.id)} className="text-primary hover:underline font-bold ml-1.5">
-                        "{c.subject}"
-                      </button>
-                    </div>
-                    <div className="text-[12px] text-ink-500 mt-0.5">
-                      Duration: {fmtDuration(c.duration)} · Status: Completed · {fmtDate(c.dateTime)} {fmtTime(c.dateTime)}
-                    </div>
-                  </div>
-                ))}
-
-                {/* 3. Notes in Timeline */}
-                {notesList.map(n => (
-                  <div key={n.id} className="relative pl-6">
-                    <div className="absolute left-[-9px] top-1 w-4 h-4 rounded-full bg-amber-500 ring-4 ring-white" />
-                    <div className="text-[14px]">
-                      <span className="font-semibold text-ink">{n.author}</span> added a note
-                    </div>
-                    <p className="text-[13px] text-ink-600 bg-slate-50 p-2.5 rounded-lg border border-line mt-1.5">{n.text}</p>
-                    <div className="text-[12px] text-ink-400 mt-0.5">{fmtDate(n.createdAt?.slice(0, 10))}</div>
-                  </div>
-                ))}
-
-                {/* 4. Deal Created */}
-                <div className="relative pl-6">
-                  <div className="absolute left-[-9px] top-1 w-4 h-4 rounded-full bg-slate-400 ring-4 ring-white" />
-                  <div className="text-[14px]">
-                    <span className="font-semibold text-ink">{userName(deal.ownerId)}</span> created deal <strong>"{deal.name}"</strong>
-                  </div>
-                  <div className="text-[12px] text-ink-500 mt-0.5">{fmtDate(deal.createdOn)} · Source: {deal.source}</div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <TimelineHistoryView module="Deals" record={deal} />
         )}
       </div>
 
@@ -3741,70 +4426,18 @@ export default function DealDetail({ id, onClose, onEdit }) {
         onSave={confirmStageTransition}
       />
 
-      {/* Manage Stage History Columns Modal */}
-      {stageHistoryColsOpen && (
-        <Modal
-          open={stageHistoryColsOpen}
-          onClose={() => setStageHistoryColsOpen(false)}
-          title="Manage Stage History Columns"
-          size="sm"
-          footer={
-            <>
-              <button type="button" onClick={() => setStageHistoryColsOpen(false)} className="btn-secondary px-3.5">Cancel</button>
-              <button
-                type="button"
-                onClick={() => {
-                  setStageHistoryColsOpen(false);
-                  toast.success('Stage History columns saved');
-                }}
-                className="btn-primary px-4"
-              >
-                Save
-              </button>
-            </>
-          }
-        >
-          <div className="space-y-3 py-1 text-[13px]">
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Search columns..."
-                className="input-field w-full pl-8"
-                value={stageHistorySearch}
-                onChange={e => setStageHistorySearch(e.target.value)}
-              />
-              <SlidersHorizontal size={13} className="absolute left-2.5 top-2.5 text-ink-400" />
-            </div>
-
-            <div className="space-y-2 max-h-48 overflow-y-auto thin-scroll pt-1">
-              {ALL_STAGE_HISTORY_COLS
-                .filter(c => c.toLowerCase().includes(stageHistorySearch.toLowerCase()))
-                .map(col => {
-                  const isChecked = stageHistoryCols.includes(col);
-                  return (
-                    <label key={col} className="flex items-center gap-2 cursor-pointer hover:bg-slate-50 p-1.5 rounded">
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={() => {
-                          if (isChecked) {
-                            if (stageHistoryCols.length > 1) {
-                              setStageHistoryCols(stageHistoryCols.filter(x => x !== col));
-                            }
-                          } else {
-                            setStageHistoryCols([...stageHistoryCols, col]);
-                          }
-                        }}
-                        className="rounded text-primary focus:ring-primary/20"
-                      />
-                      <span className="font-medium text-ink">{col}</span>
-                    </label>
-                  );
-                })}
-            </div>
-          </div>
-        </Modal>
-      )}
+      {/* Change Deal Owner Modal (Matching Screenshot 6) */}
+      <ChangeOwnerModal
+        open={changeOwnerModalOpen}
+        deal={deal}
+        users={users}
+        onClose={() => setChangeOwnerModalOpen(false)}
+        onSave={(newOwnerId) => {
+          updateRecord('deals', deal.id, { ownerId: newOwnerId });
+          setChangeOwnerModalOpen(false);
+          toast.success('Deal Owner updated successfully');
+        }}
+      />
 
       {/* Send Email Modal */}
       {emailModalOpen && (
@@ -4052,91 +4685,39 @@ export default function DealDetail({ id, onClose, onEdit }) {
         </Modal>
       )}
 
-      {/* Add Related List Modal */}
-      {addRelatedListOpen && (
-        <Modal
-          open={addRelatedListOpen}
-          onClose={() => setAddRelatedListOpen(false)}
-          title="Add Related List"
-          size="sm"
-          footer={
-            <>
-              <button type="button" onClick={() => setAddRelatedListOpen(false)} className="btn-secondary px-3.5">Cancel</button>
-              <button
-                type="button"
-                onClick={() => {
-                  setAddRelatedListOpen(false);
-                  toast.success('Related Lists configuration updated.');
-                }}
-                className="btn-primary px-4"
-              >
-                Save
-              </button>
-            </>
-          }
-        >
-          <div className="space-y-3 py-1 text-[13px]">
-            <p className="text-ink-600">Select additional modules or related lists to show on this deal:</p>
-            <div className="space-y-2 max-h-56 overflow-y-auto thin-scroll pt-1">
-              {availableRelatedLists.map(item => (
-                <label key={item.id} className="flex items-center gap-2.5 p-2 rounded hover:bg-slate-50 cursor-pointer border border-transparent hover:border-line">
-                  <input
-                    type="checkbox"
-                    checked={item.active}
-                    onChange={() => {
-                      setAvailableRelatedLists(prev =>
-                        prev.map(x => x.id === item.id ? { ...x, active: !x.active } : x)
-                      );
-                    }}
-                    className="rounded text-primary focus:ring-primary/20"
-                  />
-                  <span className="font-medium text-ink">{item.label}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-        </Modal>
-      )}
+      {/* Organize Potentials Details Panel (Screenshot 1) */}
+      <OrganizeSectionsPanel
+        isOpen={organizePanelOpen}
+        onClose={() => setOrganizePanelOpen(false)}
+        sections={organizeSections}
+        onSave={(next) => {
+          setOrganizeSections(next);
+          try {
+            localStorage.setItem('deal_related_sections_order', JSON.stringify(next));
+          } catch (e) {}
+        }}
+      />
 
-      {/* Add Link Modal */}
-      {addLinkModalOpen && (
-        <Modal
-          open={addLinkModalOpen}
-          onClose={() => setAddLinkModalOpen(false)}
-          title="Add Custom Link"
-          size="sm"
-          footer={
-            <>
-              <button type="button" onClick={() => setAddLinkModalOpen(false)} className="btn-secondary px-3.5">Cancel</button>
-              <button type="button" onClick={handleAddLink} className="btn-primary px-4">Add Link</button>
-            </>
-          }
-        >
-          <div className="space-y-3.5 py-1 text-[13px]">
-            <div>
-              <label className="block text-ink-600 font-medium mb-1">Link Title</label>
-              <input
-                type="text"
-                className="input-field w-full"
-                placeholder="e.g. Project Specs, Client Portal"
-                value={newLinkTitle}
-                onChange={e => setNewLinkTitle(e.target.value)}
-                autoFocus
-              />
-            </div>
-            <div>
-              <label className="block text-ink-600 font-medium mb-1">URL</label>
-              <input
-                type="url"
-                className="input-field w-full"
-                placeholder="https://example.com"
-                value={newLinkUrl}
-                onChange={e => setNewLinkUrl(e.target.value)}
-              />
-            </div>
-          </div>
-        </Modal>
-      )}
+      {/* Manage Links Modal (Screenshot 2) */}
+      <ManageLinksModal
+        isOpen={manageLinksModalOpen}
+        onClose={() => setManageLinksModalOpen(false)}
+        links={dealLinks}
+        onUpdateLinks={handleUpdateLinks}
+      />
+
+      {/* Manage Tags Modal (Screenshots 3, 4, 5) */}
+      <ManageTagsModal
+        isOpen={manageTagsModalOpen}
+        onClose={() => setManageTagsModalOpen(false)}
+        allTags={allTags}
+        onUpdateAllTags={(next) => {
+          setAllTags(next);
+          try {
+            localStorage.setItem('crm_all_tags', JSON.stringify(next));
+          } catch (e) {}
+        }}
+      />
 
       {/* New Invoice Modal */}
       {invoiceModalOpen && (

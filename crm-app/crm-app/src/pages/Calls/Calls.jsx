@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { CalendarClock, CalendarPlus, ChevronDown, Clock3, Columns2, Columns3, Download, LayoutDashboard, LayoutGrid, List, Phone, PhoneCall, PhoneIncoming, PhoneMissed, PhoneOutgoing, PieChart, Plus, Search, SlidersHorizontal, Table2, Trash2, UserCog, Settings2, Check, CheckCircle2 } from 'lucide-react';
+import { CalendarClock, CalendarPlus, ChevronDown, Clock3, Columns2, Columns3, Download, LayoutDashboard, LayoutGrid, List, Phone, PhoneCall, PhoneIncoming, PhoneMissed, PhoneOutgoing, PieChart, Plus, Search, SlidersHorizontal, Table2, Trash2, UserCog, Settings2, Check, CheckCircle2, Edit2 } from 'lucide-react';
 import { useCRM } from '../../context/CRMContext';
+import { useToast } from '../../components/common/Toast';
 import PageHeader from '../../components/common/PageHeader';
 import StatCard from '../../components/common/StatCard';
 import DataTable from '../../components/common/DataTable';
+import SpreadsheetGridView from '../../components/common/SpreadsheetGridView';
 import Pagination from '../../components/common/Pagination';
 import useTable from '../../components/common/useTable';
 import StatusBadge, { badgeTone } from '../../components/common/StatusBadge';
@@ -16,6 +18,9 @@ import Dropdown, { MenuItem, MenuLabel, MenuDivider } from '../../components/com
 import BulkBar, { BulkButton } from '../../components/common/BulkBar';
 import { ChartView, GridView, KanbanView } from '../../components/common/Views';
 import { useRefresh, useUrlActions } from '../../components/common/hooks';
+import ViewSettingsMenu from '../../components/common/ViewSettingsMenu';
+import ManageColsModal from '../../components/common/ManageColsModal';
+import { SaveFilterModal, RenameFilterModal } from '../../components/common/FilterModals';
 import { CALL_STATUSES, CALL_TYPES } from '../../data/seedData';
 import { fmtDate, fmtDuration, fmtTime, inRange, sumBy, trend } from '../../utils/calculations';
 import { exportCSV } from '../../utils/exportCSV';
@@ -46,61 +51,22 @@ const ALL_COLUMNS = [
   'Note Badge', 'Subject', 'Call Manager', 'Description', 'Call Type', 'Call Start Time', 'Call Duration', 'Related To', 'Contact Name', 'Created Time', 'Call Owner', 'Call Purpose', 'Call Duration (in seconds)', 'Call Result', 'Created By', 'Modified By', 'Modified Time', 'Tag', 'Outgoing Call Status'
 ];
 
-function ManageColsModal({ open, onClose, visibleCols, onSave }) {
-  const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState(new Set(visibleCols));
+const MAX_SAVED_FILTERS = 10;
 
-  useMemo(() => {
-    if (open) {
-      setSelected(new Set(visibleCols));
-      setSearch('');
-    }
-  }, [open, visibleCols]);
-
-  if (!open) return null;
-
-  const filteredCols = ALL_COLUMNS.filter(c => c.toLowerCase().includes(search.toLowerCase()));
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50" onClick={onClose}>
-      <div className="bg-white rounded-lg shadow-xl w-[400px] max-w-full flex flex-col max-h-[85vh] overflow-hidden" onClick={e => e.stopPropagation()}>
-        <div className="px-5 py-4 border-b border-line flex items-center justify-between">
-          <h2 className="text-[16px] font-semibold text-primary">Manage Columns</h2>
-        </div>
-        <div className="p-4 border-b border-line">
-          <div className="relative">
-            <Search className="absolute left-3 top-2.5 text-ink-400" size={16} />
-            <input type="text" placeholder="Search" className="w-full h-9 pl-9 pr-3 text-[14px] border border-line rounded focus:border-primary outline-none" value={search} onChange={e => setSearch(e.target.value)} />
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 thin-scroll">
-          {filteredCols.map(c => {
-            const isMandatory = c === 'Subject';
-            const isChecked = selected.has(c);
-            return (
-              <label key={c} className="flex items-start gap-3 cursor-pointer">
-                <input type="checkbox" className="cb mt-1" disabled={isMandatory} checked={isChecked || isMandatory} onChange={(e) => {
-                  if (isMandatory) return;
-                  const next = new Set(selected);
-                  if (e.target.checked) next.add(c);
-                  else next.delete(c);
-                  setSelected(next);
-                }} />
-                <span className="text-[14px] font-medium text-ink flex-1">
-                  {c}{isMandatory && <span className="text-red-500 ml-0.5">*</span>}
-                </span>
-              </label>
-            );
-          })}
-        </div>
-        <div className="p-4 border-t border-line flex items-center justify-center gap-3">
-          <button onClick={onClose} className="btn-secondary h-8 px-4 rounded text-[13px]">Cancel</button>
-          <button onClick={() => onSave(Array.from(selected))} className="btn-primary h-8 px-4 rounded text-[13px]">Save</button>
-        </div>
-      </div>
-    </div>
-  );
-}
+const DEFAULT_SAVED_FILTERS = [
+  {
+    id: 'sf-calls-1',
+    name: 'Completed Calls',
+    config: { 'Call Result': { op: 'Is', val: 'Completed' } },
+    fields: ['Call Result'],
+  },
+  {
+    id: 'sf-calls-2',
+    name: 'Outbound Calls',
+    config: { 'Call Type': { op: 'Is', val: 'Outbound' } },
+    fields: ['Call Type'],
+  },
+];
 
 const SYSTEM_FILTERS = ['Record Action', 'Related Records Action', 'Touched Records', 'Untouched Records'];
 const FIELD_FILTERS = ['AI Analysis', 'Call Agenda', 'Call Connect Status', 'Call Duration', 'Call Duration (in seconds)', 'Call Manager', 'Call Owner', 'Call Purpose', 'Call Result', 'Call Start Time', 'Call Type', 'Caller ID', 'Contact Name'];
@@ -127,6 +93,7 @@ function CallTypeIcon({ type }) {
 export default function Calls() {
   const navigate = useNavigate();
   const { calls, contacts, users, baselines, accountName, contactName, userName, contactsById, createRecord, updateRecord, deleteRecords } = useCRM();
+  const toast = useToast();
   const { refreshing, refresh } = useRefresh('Calls');
   const [returnDealId, setReturnDealId] = useState(() => {
     const params = new URLSearchParams(window.location.search);
@@ -208,15 +175,40 @@ export default function Calls() {
   const [appliedFilters, setAppliedFilters] = useState({});
   const [viewSearch, setViewSearch] = useState('');
   
-  const [pageSize, setPageSize] = useState(100);
-  const [wrapText, setWrapText] = useState(true);
+  const [pageSize, setPageSize] = useState(() => {
+    try {
+      const saved = localStorage.getItem('calls_page_size');
+      if (saved) return Number(saved);
+    } catch (e) {}
+    return 100;
+  });
+  const [viewMode, setViewMode] = useState(() => {
+    try {
+      return localStorage.getItem('calls_view_mode') || 'wrap';
+    } catch (e) {
+      return 'wrap';
+    }
+  });
+  const wrapText = viewMode === 'wrap';
+  const [savedFilters, setSavedFilters] = useState(() => {
+    try {
+      const saved = localStorage.getItem('calls_saved_filters');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return DEFAULT_SAVED_FILTERS;
+  });
+  const [activeSavedFilterId, setActiveSavedFilterId] = useState(null);
+  const [saveFilterModalOpen, setSaveFilterModalOpen] = useState(false);
+  const [renameFilterModalOpen, setRenameFilterModalOpen] = useState(false);
+  const [filterToRename, setFilterToRename] = useState(null);
+  const [filterToDelete, setFilterToDelete] = useState(null);
   const [manageColsOpen, setManageColsOpen] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState(() => {
     try {
       const saved = localStorage.getItem('calls_cols');
       if (saved) return JSON.parse(saved);
     } catch (e) {}
-    return ['Note Badge', 'Subject', 'Call Manager', 'Description', 'Call Type', 'Call Start Time', 'Call Duration', 'Related To', 'Contact Name', 'Created Time'];
+    return ['Subject', 'Call Owner', 'Call Type', 'Call Status', 'Call Start Time', 'Call Duration', 'Related To', 'Contact Name', 'Created Time'];
   });
 
   const [pinnedColumns, setPinnedColumns] = useState(() => {
@@ -392,12 +384,120 @@ export default function Calls() {
     table?.setPage?.(1);
   };
 
+  const hasActiveFilter = useMemo(() => {
+    return Object.values(appliedFilters).some(
+      (conf) => conf && (conf.val !== '' || conf.op === 'Is Empty')
+    ) || Object.values(filterConfig).some(
+      (conf) => conf && (conf.val !== '' || conf.op === 'Is Empty')
+    );
+  }, [appliedFilters, filterConfig]);
+
+  const resolveFieldName = (colKey, column) => {
+    if (column?.colName) return column.colName;
+    if (column?.header) return column.header;
+    return colKey;
+  };
+
+  const handleOpenFilterSidebar = (colKey, column) => {
+    const targetField = resolveFieldName(colKey, column);
+    setFiltersOpen(true);
+    setFilterSearch('');
+
+    setSelectedFields((prev) => {
+      const next = new Set(prev);
+      next.add(targetField);
+      return next;
+    });
+
+    setFilterConfig((prev) => {
+      if (!prev[targetField]) {
+        const fType = getFieldType(targetField);
+        return {
+          ...prev,
+          [targetField]: { op: (FILTER_TYPES[fType] || ['Contains'])[0], val: '' },
+        };
+      }
+      return prev;
+    });
+
+    setTimeout(() => {
+      const slug = targetField.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+      const el = document.getElementById(`filter-field-${slug}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const input = el.querySelector('input:not([type="checkbox"]), select');
+        if (input) input.focus();
+      }
+    }, 150);
+  };
+
+  const handleApplySavedFilter = (sf) => {
+    setActiveSavedFilterId(sf.id);
+    setSelectedFields(new Set(sf.fields || Object.keys(sf.config)));
+    setFilterConfig({ ...sf.config });
+    setAppliedFilters({ ...sf.config });
+    table.setPage(1);
+  };
+
+  const handleUpdateSavedFilter = (sfId) => {
+    setSavedFilters((prev) => {
+      const next = prev.map((f) => {
+        if (f.id === sfId) {
+          return {
+            ...f,
+            config: { ...filterConfig },
+            fields: Array.from(selectedFields),
+          };
+        }
+        return f;
+      });
+      localStorage.setItem('calls_saved_filters', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const handleRenameSavedFilter = (sfId, newName) => {
+    setSavedFilters((prev) => {
+      const next = prev.map((f) => (f.id === sfId ? { ...f, name: newName } : f));
+      localStorage.setItem('calls_saved_filters', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const handleDeleteSavedFilter = (sfId) => {
+    setSavedFilters((prev) => {
+      const next = prev.filter((f) => f.id !== sfId);
+      localStorage.setItem('calls_saved_filters', JSON.stringify(next));
+      return next;
+    });
+    if (activeSavedFilterId === sfId) {
+      setActiveSavedFilterId(null);
+    }
+    setFilterToDelete(null);
+  };
+
+  const handleSaveNewFilter = (name) => {
+    if (savedFilters.length >= MAX_SAVED_FILTERS) return;
+    const newFilter = {
+      id: `sf-${Date.now()}`,
+      name,
+      config: { ...filterConfig },
+      fields: Array.from(selectedFields),
+    };
+    const next = [...savedFilters, newFilter];
+    setSavedFilters(next);
+    localStorage.setItem('calls_saved_filters', JSON.stringify(next));
+    setActiveSavedFilterId(newFilter.id);
+    setSaveFilterModalOpen(false);
+  };
+
   const columnMenuConfig = useMemo(() => ({
     module: 'calls',
     pinnedColumns,
     onTogglePin: handleTogglePin,
     onHideColumn: handleHideColumn,
     onFilterColumn: handleFilterColumn,
+    onOpenFilterSidebar: handleOpenFilterSidebar,
     appliedFilters,
     filterOptions: filterOptionsContext,
     getFieldType: (k) => getFieldType(k),
@@ -468,12 +568,26 @@ export default function Calls() {
     'Call Purpose': { key: 'purpose', header: 'Call Purpose', sortable: false, render: () => '—' },
     'Call Duration (in seconds)': { key: 'durationSec', header: 'Call Duration (in seconds)', sortable: true, render: (c) => c.duration || 0 },
     'Call Result': { key: 'status', header: 'Call Result', sortable: true, render: (c) => c.status },
+    'Call Status': { key: 'status', header: 'Call Status', sortable: true, render: (c) => <StatusBadge kind="callStatus" value={c.status} size="sm" /> },
     'Created By': { key: 'createdBy', header: 'Created By', sortable: false, render: (c) => userName(c.ownerId) },
     'Modified By': { key: 'modifiedBy', header: 'Modified By', sortable: false, render: (c) => userName(c.ownerId) },
     'Modified Time': { key: 'modifiedTime', header: 'Modified Time', sortable: false, render: (c) => fmtDate(c.dateTime) },
     'Tag': { key: 'tag', header: 'Tag', sortable: false, render: () => '—' },
     'Outgoing Call Status': { key: 'outgoingStatus', header: 'Outgoing Call Status', sortable: false, render: (c) => c.type === 'Outbound' ? c.status : '—' }
   }), [accountName, contactName, userName]);
+
+  const handleInlineCellEdit = (callId, colKey, newValue) => {
+    const keyMap = {
+      'Subject': 'subject',
+      'Description': 'notes',
+      'Call Status': 'status',
+      'Call Result': 'status',
+      'Call Type': 'type',
+    };
+    const propKey = keyMap[colKey] || colKey;
+    updateRecord('calls', callId, { [propKey]: newValue });
+    toast.success('Updated successfully');
+  };
 
   const columns = useMemo(() => {
     const cols = visibleColumns.map(c => ({
@@ -513,7 +627,7 @@ export default function Calls() {
           const type = getFieldType(field);
           const ops = FILTER_TYPES[type];
           return (
-            <div key={field} className="space-y-1.5">
+            <div key={field} id={`filter-field-${field.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}`} className="space-y-1.5">
               <label className="flex items-start gap-2.5 text-[13.5px] text-ink-600 cursor-pointer leading-snug">
                 <input type="checkbox" className="cb mt-0.5" checked={checked} onChange={() => toggleField(field)} />
                 {field}
@@ -605,6 +719,8 @@ export default function Calls() {
         toolbar={{
           sidebarToggle: { isOpen: filtersOpen, onToggle: () => setFiltersOpen((o) => !o) },
           filterActive: filtersOpen, onFilter: () => setFiltersOpen((o) => !o),
+          hasActiveFilter,
+          onSaveFilter: () => setSaveFilterModalOpen(true),
           sortOptions: [{ key: 'dateTime', label: 'Call Date & Time' }, { key: 'duration', label: 'Duration' }, { key: 'subject', label: 'Call Subject' }, { key: 'contact', label: 'Contact Name' }, { key: 'status', label: 'Status' }],
           sort: table.sort,
           onSort: table.setSort,
@@ -667,6 +783,93 @@ export default function Calls() {
             </div>
 
             <div className="flex-1 overflow-y-auto thin-scroll px-3.5 pb-4">
+              <details className="group mb-2" open={!filterSearch}>
+                <summary className="py-2.5 text-[14px] font-semibold text-ink cursor-pointer select-none flex items-center justify-between -ml-1">
+                  <div className="flex items-center gap-1">
+                    <ChevronDown size={16} className="group-open:rotate-180 transition-transform -rotate-90" />
+                    Saved Filters
+                  </div>
+                  <span className="text-[11px] font-medium bg-line text-ink-600 px-2 py-0.5 rounded-full" title="Saved presets count">
+                    {savedFilters.length} / {MAX_SAVED_FILTERS} Saved Filters
+                  </span>
+                </summary>
+                <div className="pl-4 pb-3 space-y-1.5 text-[13px] text-ink-600">
+                  {savedFilters.length === 0 ? (
+                    <div className="text-[12.5px] text-ink-400 py-1 pl-1">No saved filters yet</div>
+                  ) : (
+                    savedFilters.map((sf) => {
+                      const isActive = activeSavedFilterId === sf.id;
+                      return (
+                        <div
+                          key={sf.id}
+                          className={`group/sf flex items-center justify-between py-1 px-2 rounded-md transition-colors ${
+                            isActive ? 'bg-primary-50 text-primary font-semibold' : 'hover:bg-page'
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => handleApplySavedFilter(sf)}
+                            className="truncate text-left flex-1 hover:text-primary"
+                            title={`Apply preset "${sf.name}"`}
+                          >
+                            {sf.name}
+                          </button>
+                          <div className="flex items-center gap-1 opacity-70 group-hover/sf:opacity-100 ml-1">
+                            {isActive && hasActiveFilter && (
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateSavedFilter(sf.id)}
+                                className="p-1 hover:text-primary text-ink-400"
+                                title="Update this preset with current conditions"
+                              >
+                                <Check size={13} />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFilterToRename(sf);
+                                setRenameFilterModalOpen(true);
+                              }}
+                              className="p-1 hover:text-primary text-ink-400"
+                              title="Rename filter"
+                            >
+                              <Edit2 size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setFilterToDelete(sf)}
+                              className="p-1 hover:text-red-500 text-ink-400"
+                              title="Delete filter"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+
+                  {hasActiveFilter && (
+                    <div className="pt-1.5 pl-1">
+                      {savedFilters.length < MAX_SAVED_FILTERS ? (
+                        <button
+                          type="button"
+                          onClick={() => setSaveFilterModalOpen(true)}
+                          className="text-primary hover:underline text-[12.5px] font-medium flex items-center gap-1"
+                        >
+                          <Plus size={13} /> Save Current Filter
+                        </button>
+                      ) : (
+                        <span className="text-[11.5px] text-red-500 block font-medium">
+                          Maximum 10 saved filters allowed.
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </details>
+
               <details className="group" open>
                 <summary className="py-2.5 text-[14px] font-semibold text-ink cursor-pointer select-none flex items-center gap-1 -ml-1">
                   <ChevronDown size={16} className="group-open:rotate-180 transition-transform -rotate-90" />
@@ -700,33 +903,29 @@ export default function Calls() {
               <BulkButton icon={Download} onClick={() => exportRows(calls.filter((c) => table.selected.has(c.id)))}>Export</BulkButton>
               <BulkButton icon={Trash2} danger onClick={() => setConfirm({ ids: selectedIds, label: `${selectedIds.length} calls` })}>Delete</BulkButton>
             </BulkBar>
-            {layout === 'list' && <DataTable columns={columns} rows={table.pageRows} table={table} loading={refreshing} dense={dense} minWidth={1280} columnMenu={columnMenuConfig}
+            {layout === 'list' && <DataTable columns={columns} rows={table.pageRows} table={table} loading={refreshing} dense={dense} minWidth={1280} columnMenu={columnMenuConfig} viewMode={viewMode}
               emptyAction={<button className="btn-primary mt-2 h-9" onClick={() => setForm({ mode: 'create', record: blank() })}><Plus size={16} />Log a Call</button>}
               headerExtra={
                 <th className="th w-[44px] text-center p-0">
-                  <Dropdown width={180} align="right" trigger={
-                    <button type="button" className="h-7 w-7 inline-flex items-center justify-center rounded border border-line bg-white hover:bg-page mt-1">
-                      <Settings2 size={15} className="text-ink-600" />
-                    </button>
-                  }>
-                    {(close) => (
-                      <div className="py-1">
-                        <MenuItem close={close} onClick={() => setManageColsOpen(true)}>Manage Columns</MenuItem>
-                        <MenuItem close={close} onClick={() => { localStorage.removeItem('calls_cols'); localStorage.removeItem('calls_pinned_cols'); setPinnedColumns([]); setVisibleColumns(['Note Badge', 'Subject', 'Call Manager', 'Description', 'Call Type', 'Call Start Time', 'Call Duration', 'Related To', 'Contact Name', 'Created Time']); }}>Reset Column Size</MenuItem>
-                        <MenuDivider />
-                        <div className="px-3 py-1.5 text-[13px] font-medium text-ink-500 flex justify-between">Records Per Page <span className="text-ink-600 font-semibold">{pageSize} ▸</span></div>
-                        <div className="pl-4 pr-2 pb-1 space-y-0.5">
-                           {[10, 25, 50, 100, 200].map(sz => <MenuItem key={sz} close={close} active={pageSize === sz} onClick={() => { setPageSize(sz); table.setPage(1); }}>{sz}</MenuItem>)}
-                        </div>
-                        <MenuDivider />
-                        <div className="px-3 py-1.5 text-[13px] font-medium text-ink-500 flex justify-between">View Mode <span className="text-ink-600 font-semibold">{wrapText ? 'Wrap Text' : 'No Wrap'} ▸</span></div>
-                        <div className="pl-4 pr-2 pb-1 space-y-0.5">
-                           <MenuItem close={close} active={wrapText} onClick={() => setWrapText(true)}>Wrap Text</MenuItem>
-                           <MenuItem close={close} active={!wrapText} onClick={() => setWrapText(false)}>No Wrap</MenuItem>
-                        </div>
-                      </div>
-                    )}
-                  </Dropdown>
+                  <ViewSettingsMenu
+                    onManageColumns={() => setManageColsOpen(true)}
+                    onResetColumnSize={() => {
+                      localStorage.removeItem('calls_pinned_cols');
+                      setPinnedColumns([]);
+                    }}
+                    hasCustomColumnSize={pinnedColumns.length > 0}
+                    pageSize={pageSize}
+                    onPageSizeChange={(sz) => {
+                      setPageSize(sz);
+                      localStorage.setItem('calls_page_size', sz);
+                      table.setPage(1);
+                    }}
+                    viewMode={viewMode}
+                    onViewModeChange={(mode) => {
+                      setViewMode(mode);
+                      localStorage.setItem('calls_view_mode', mode);
+                    }}
+                  />
                 </th>
               }
             />}
@@ -734,14 +933,46 @@ export default function Calls() {
               onMove={setStatus} onCardClick={(c) => setViewing(c.id)}
               renderCard={(c) => (<div><div className="text-[13.5px] font-semibold text-ink">{c.subject}</div><div className="text-[12px] text-ink-500 mt-0.5">{contactName(c.contactId)} · {accountName(c.accountId)}</div><div className="flex items-center justify-between mt-2 text-[12px] text-ink-600"><CallTypeIcon type={c.type} /><span>{fmtDate(c.dateTime)}</span></div></div>)} /></div>}
 
-            {layout === 'grid' && <div className="p-3"><GridView rows={table.pageRows} onCardClick={(c) => setViewing(c.id)} renderCard={(c) => (
-              <>
-                <div className="flex items-start justify-between gap-2"><div className="font-semibold text-ink">{c.subject}</div><StatusBadge kind="callStatus" value={c.status} size="sm" /></div>
-                <div className="flex items-center gap-2 mt-2 text-[12.5px] text-ink-600"><PersonAvatar name={contactName(c.contactId)} size={24} solid />{contactName(c.contactId)} · {accountName(c.accountId)}</div>
-                <div className="flex items-center justify-between mt-3 text-[12.5px] text-ink-600"><CallTypeIcon type={c.type} /><span>{fmtDate(c.dateTime)} {fmtTime(c.dateTime)}</span></div>
-                <p className="text-[12.5px] text-ink-500 mt-2 line-clamp-2">{c.notes}</p>
-              </>
-            )} /></div>}
+            {layout === 'grid' && (
+              <div>
+                <SpreadsheetGridView
+                  columns={columns}
+                  rows={table.pageRows}
+                  table={table}
+                  loading={refreshing}
+                  minWidth={1200}
+                  columnMenu={columnMenuConfig}
+                  viewMode={viewMode}
+                  onCellEdit={handleInlineCellEdit}
+                  emptyAction={<button className="btn-primary mt-2 h-9" onClick={() => setForm({ mode: 'create', record: blank() })}><Plus size={16} />Log a Call</button>}
+                  headerExtra={
+                    <th className="w-[44px] min-w-[44px] max-w-[44px] text-center p-0 border-b border-[#CBD5E1] bg-[#F4F6F9]">
+                      <ViewSettingsMenu
+                        onManageColumns={() => setManageColsOpen(true)}
+                        onResetColumnSize={() => {
+                          localStorage.removeItem('calls_cols');
+                          localStorage.removeItem('calls_pinned_cols');
+                          setPinnedColumns([]);
+                          setVisibleColumns(['Subject', 'Call Owner', 'Call Type', 'Call Status', 'Call Start Time', 'Call Duration', 'Related To', 'Contact Name', 'Created Time']);
+                        }}
+                        pageSize={pageSize}
+                        onPageSizeChange={(newSize) => {
+                          setPageSize(newSize);
+                          table.setPageSize(newSize);
+                          try { localStorage.setItem('calls_page_size', String(newSize)); } catch (e) {}
+                        }}
+                        viewMode={viewMode}
+                        onViewModeChange={(newMode) => {
+                          setViewMode(newMode);
+                          setWrapText(newMode === 'wrap');
+                          try { localStorage.setItem('calls_view_mode', newMode); } catch (e) {}
+                        }}
+                      />
+                    </th>
+                  }
+                />
+              </div>
+            )}
 
             {layout === 'chart' && <ChartView title="Calls by status (filtered)" data={CALL_STATUSES.map((s) => ({ name: s, value: filtered.filter((c) => c.status === s).length, color: STATUS_COLORS[s] }))} valueLabel="Calls" />}
 
@@ -791,33 +1022,29 @@ export default function Calls() {
                     <span>Manage Columns</span>
                   </button>
                 </div>
-                <DataTable columns={columns} rows={table.pageRows} table={table} loading={refreshing} dense={dense} minWidth={1280} columnMenu={columnMenuConfig}
+                <DataTable columns={columns} rows={table.pageRows} table={table} loading={refreshing} dense={dense} minWidth={1280} columnMenu={columnMenuConfig} viewMode={viewMode}
                   emptyAction={<button className="btn-primary mt-2 h-9" onClick={() => setForm({ mode: 'create', record: blank() })}><Plus size={16} />Log a Call</button>}
                   headerExtra={
                     <th className="th w-[44px] text-center p-0">
-                      <Dropdown width={180} align="right" trigger={
-                        <button type="button" className="h-7 w-7 inline-flex items-center justify-center rounded border border-line bg-white hover:bg-page mt-1">
-                          <Settings2 size={15} className="text-ink-600" />
-                        </button>
-                      }>
-                        {(close) => (
-                          <div className="py-1">
-                            <MenuItem close={close} onClick={() => setManageColsOpen(true)}>Manage Columns</MenuItem>
-                            <MenuItem close={close} onClick={() => { localStorage.removeItem('calls_cols'); localStorage.removeItem('calls_pinned_cols'); setPinnedColumns([]); setVisibleColumns(['Note Badge', 'Subject', 'Call Manager', 'Description', 'Call Type', 'Call Start Time', 'Call Duration', 'Related To', 'Contact Name', 'Created Time']); }}>Reset Column Size</MenuItem>
-                            <MenuDivider />
-                            <div className="px-3 py-1.5 text-[13px] font-medium text-ink-500 flex justify-between">Records Per Page <span className="text-ink-600 font-semibold">{pageSize} ▸</span></div>
-                            <div className="pl-4 pr-2 pb-1 space-y-0.5">
-                               {[10, 25, 50, 100, 200].map(sz => <MenuItem key={sz} close={close} active={pageSize === sz} onClick={() => { setPageSize(sz); table.setPage(1); }}>{sz}</MenuItem>)}
-                            </div>
-                            <MenuDivider />
-                            <div className="px-3 py-1.5 text-[13px] font-medium text-ink-500 flex justify-between">View Mode <span className="text-ink-600 font-semibold">{wrapText ? 'Wrap Text' : 'No Wrap'} ▸</span></div>
-                            <div className="pl-4 pr-2 pb-1 space-y-0.5">
-                               <MenuItem close={close} active={wrapText} onClick={() => setWrapText(true)}>Wrap Text</MenuItem>
-                               <MenuItem close={close} active={!wrapText} onClick={() => setWrapText(false)}>No Wrap</MenuItem>
-                            </div>
-                          </div>
-                        )}
-                      </Dropdown>
+                      <ViewSettingsMenu
+                        onManageColumns={() => setManageColsOpen(true)}
+                        onResetColumnSize={() => {
+                          localStorage.removeItem('calls_pinned_cols');
+                          setPinnedColumns([]);
+                        }}
+                        hasCustomColumnSize={pinnedColumns.length > 0}
+                        pageSize={pageSize}
+                        onPageSizeChange={(sz) => {
+                          setPageSize(sz);
+                          localStorage.setItem('calls_page_size', sz);
+                          table.setPage(1);
+                        }}
+                        viewMode={viewMode}
+                        onViewModeChange={(mode) => {
+                          setViewMode(mode);
+                          localStorage.setItem('calls_view_mode', mode);
+                        }}
+                      />
                     </th>
                   }
                 />
@@ -842,33 +1069,29 @@ export default function Calls() {
 
             {/* 9. Table View */}
             {layout === 'table' && (
-              <DataTable columns={columns} rows={table.pageRows} table={table} loading={refreshing} dense={true} minWidth={1280} columnMenu={columnMenuConfig}
+              <DataTable columns={columns} rows={table.pageRows} table={table} loading={refreshing} dense={true} minWidth={1280} columnMenu={columnMenuConfig} viewMode={viewMode}
                 emptyAction={<button className="btn-primary mt-2 h-9" onClick={() => setForm({ mode: 'create', record: blank() })}><Plus size={16} />Log a Call</button>}
                 headerExtra={
                   <th className="th w-[44px] text-center p-0">
-                    <Dropdown width={180} align="right" trigger={
-                      <button type="button" className="h-7 w-7 inline-flex items-center justify-center rounded border border-line bg-white hover:bg-page mt-1">
-                        <Settings2 size={15} className="text-ink-600" />
-                      </button>
-                    }>
-                      {(close) => (
-                        <div className="py-1">
-                          <MenuItem close={close} onClick={() => setManageColsOpen(true)}>Manage Columns</MenuItem>
-                          <MenuItem close={close} onClick={() => { localStorage.removeItem('calls_cols'); localStorage.removeItem('calls_pinned_cols'); setPinnedColumns([]); setVisibleColumns(['Note Badge', 'Subject', 'Call Manager', 'Description', 'Call Type', 'Call Start Time', 'Call Duration', 'Related To', 'Contact Name', 'Created Time']); }}>Reset Column Size</MenuItem>
-                          <MenuDivider />
-                          <div className="px-3 py-1.5 text-[13px] font-medium text-ink-500 flex justify-between">Records Per Page <span className="text-ink-600 font-semibold">{pageSize} ▸</span></div>
-                          <div className="pl-4 pr-2 pb-1 space-y-0.5">
-                             {[10, 25, 50, 100, 200].map(sz => <MenuItem key={sz} close={close} active={pageSize === sz} onClick={() => { setPageSize(sz); table.setPage(1); }}>{sz}</MenuItem>)}
-                          </div>
-                          <MenuDivider />
-                          <div className="px-3 py-1.5 text-[13px] font-medium text-ink-500 flex justify-between">View Mode <span className="text-ink-600 font-semibold">{wrapText ? 'Wrap Text' : 'No Wrap'} ▸</span></div>
-                          <div className="pl-4 pr-2 pb-1 space-y-0.5">
-                             <MenuItem close={close} active={wrapText} onClick={() => setWrapText(true)}>Wrap Text</MenuItem>
-                             <MenuItem close={close} active={!wrapText} onClick={() => setWrapText(false)}>No Wrap</MenuItem>
-                          </div>
-                        </div>
-                      )}
-                    </Dropdown>
+                    <ViewSettingsMenu
+                      onManageColumns={() => setManageColsOpen(true)}
+                      onResetColumnSize={() => {
+                        localStorage.removeItem('calls_pinned_cols');
+                        setPinnedColumns([]);
+                      }}
+                      hasCustomColumnSize={pinnedColumns.length > 0}
+                      pageSize={pageSize}
+                      onPageSizeChange={(sz) => {
+                        setPageSize(sz);
+                        localStorage.setItem('calls_page_size', sz);
+                        table.setPage(1);
+                      }}
+                      viewMode={viewMode}
+                      onViewModeChange={(mode) => {
+                        setViewMode(mode);
+                        localStorage.setItem('calls_view_mode', mode);
+                      }}
+                    />
                   </th>
                 }
               />
@@ -892,8 +1115,37 @@ export default function Calls() {
       <ManageColsModal 
         open={manageColsOpen} 
         onClose={() => setManageColsOpen(false)} 
+        allColumns={ALL_COLUMNS}
         visibleCols={visibleColumns} 
+        mandatoryCols={['Subject']}
         onSave={(cols) => { setVisibleColumns(cols); localStorage.setItem('calls_cols', JSON.stringify(cols)); setManageColsOpen(false); }} 
+      />
+
+      <SaveFilterModal
+        open={saveFilterModalOpen}
+        onClose={() => setSaveFilterModalOpen(false)}
+        onSave={handleSaveNewFilter}
+        currentConfig={filterConfig}
+        count={savedFilters.length}
+        maxCount={MAX_SAVED_FILTERS}
+      />
+
+      <RenameFilterModal
+        open={renameFilterModalOpen}
+        onClose={() => {
+          setRenameFilterModalOpen(false);
+          setFilterToRename(null);
+        }}
+        filter={filterToRename}
+        onRename={handleRenameSavedFilter}
+      />
+
+      <ConfirmDialog
+        open={!!filterToDelete}
+        onClose={() => setFilterToDelete(null)}
+        title="Delete saved filter?"
+        message={filterToDelete ? `Are you sure you want to delete "${filterToDelete.name}"? This action cannot be undone.` : ''}
+        onConfirm={() => handleDeleteSavedFilter(filterToDelete?.id)}
       />
 
       {viewing && (

@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowUpDown, BarChart3, Check, ChevronDown, Clock3, Columns2, Columns3, Filter, LayoutDashboard, LayoutGrid, List, MapPin, MoreHorizontal,
+  ArrowUpDown, BarChart3, Bookmark, Check, ChevronDown, Clock3, Columns2, Columns3, Filter, LayoutDashboard, LayoutGrid, List, MapPin, MoreHorizontal,
   PieChart, RotateCw, Rows3, SlidersHorizontal, Table2, Workflow,
 } from 'lucide-react';
 import Dropdown, { MenuDivider, MenuItem, MenuLabel } from './Dropdown';
@@ -67,7 +67,7 @@ export function Toolbar({
   labeled, filterActive, onFilter, sortOptions = [], sort, onSort, layouts = ['list'], layout, onLayout,
   onRefresh, refreshing, dense, onDense, module, primary, customRight, moreItems,
   hideWorkflow, hideDense, customLayoutButtons, customViewsDropdown, onCustomListViews,
-  sidebarToggle,
+  sidebarToggle, hasActiveFilter, onSaveFilter,
 }) {
   const navigate = useNavigate();
   const isDeals = module === 'Deals';
@@ -88,6 +88,17 @@ export function Toolbar({
         className={`h-10 ${showLabel ? 'px-3.5 gap-2' : 'w-[54px]'} rounded-lg border flex items-center justify-center text-[14.5px] font-medium ${filterActive ? 'border-primary bg-primary-50 text-primary' : 'border-line bg-white text-ink-600 hover:bg-page'}`}>
         <Filter size={18} />{showLabel && <span>Filter</span>}
       </button>
+      {hasActiveFilter && onSaveFilter && (
+        <button
+          type="button"
+          onClick={onSaveFilter}
+          className="h-10 px-3.5 gap-1.5 rounded-lg border border-primary text-primary bg-primary-50 hover:bg-primary-100 flex items-center justify-center text-[14px] font-medium transition-colors shadow-xs cursor-pointer"
+          title="Save active filter conditions"
+        >
+          <Bookmark size={15} />
+          <span>Save Filter</span>
+        </button>
+      )}
       <Dropdown width={230} trigger={
         <button type="button" className={`h-10 ${showLabel ? 'px-3.5 gap-2' : 'w-[54px]'} rounded-lg border flex items-center justify-center text-[14.5px] font-medium ${sort ? 'border-primary bg-primary-50 text-primary' : 'border-line bg-white text-ink-600 hover:bg-page'}`} aria-label="Sort">
           <ArrowUpDown size={18} />{showLabel && <span>Sort</span>}

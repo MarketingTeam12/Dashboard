@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  AlarmClock, BadgeCheck, ChevronDown, Clock3, Columns2, Columns3, Download, FileText, IndianRupee, Layers, LayoutDashboard, LayoutGrid, List, Pencil, PieChart, Plus, Receipt, SlidersHorizontal, Table2, Trash2, Upload, Wallet, Search, Settings2
+  AlarmClock, BadgeCheck, ChevronDown, Clock3, Columns2, Columns3, Download, FileText, IndianRupee, Layers, LayoutDashboard, LayoutGrid, List, Pencil, PieChart, Plus, Receipt, SlidersHorizontal, Table2, Trash2, Upload, Wallet, Search, Settings2, Check, Edit2
 } from 'lucide-react';
 import { useCRM } from '../../context/CRMContext';
 import PageHeader from '../../components/common/PageHeader';
 import StatCard from '../../components/common/StatCard';
 
 import DataTable from '../../components/common/DataTable';
+import SpreadsheetGridView from '../../components/common/SpreadsheetGridView';
 import Pagination from '../../components/common/Pagination';
 import useTable from '../../components/common/useTable';
 import StatusBadge, { badgeTone } from '../../components/common/StatusBadge';
@@ -23,6 +24,9 @@ import BarChart from '../../components/charts/BarChart';
 import { ChartCard } from '../StageSummaryPercentage/StageSummaryPercentage';
 import { useRefresh, useUrlActions } from '../../components/common/hooks';
 import { useToast } from '../../components/common/Toast';
+import ViewSettingsMenu from '../../components/common/ViewSettingsMenu';
+import ManageColsModal from '../../components/common/ManageColsModal';
+import { SaveFilterModal, RenameFilterModal } from '../../components/common/FilterModals';
 import { INVOICE_STATUSES, INVOICE_TYPES } from '../../data/seedData';
 import {
   MONTHS, addDays, axisCompact, balanceOf, deriveInvoiceStatus, fmtCompact, fmtDate, fmtINR, fmtNum, inRange, invoiceKpis, monthIndex, pct, todayISO, trend,
@@ -53,64 +57,44 @@ const TYPE_COLORS = { 'Sales Invoice': '#2F7BF5', 'Recurring Invoice': '#8E3CF2'
 const p0 = (v) => `${Math.round(v)}%`;
 
 const ALL_COLUMNS = [
-  'Invoice Number', 'Account Name', 'Invoice Type', 'Invoice Date', 'Due Date', 'Amount', 'Paid Amount', 'Balance', 'Status', 'Notes'
+  'Invoice Number', 'Invoice / Estimate Number', 'Account Name', 'Customer', 'Invoice Type', 'Invoice Date', 'Created Date', 'Due Date', 'Amount', 'Paid Amount', 'Balance', 'Status', 'Payment Status', 'Notes'
 ];
 
-function ManageColsModal({ open, onClose, visibleCols, onSave }) {
-  const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState(new Set(visibleCols));
+const MAX_SAVED_FILTERS = 10;
 
-  useMemo(() => {
-    if (open) {
-      setSelected(new Set(visibleCols));
-      setSearch('');
-    }
-  }, [open, visibleCols]);
+const DEFAULT_SAVED_FILTERS = [
+  {
+    id: 'sf-fin-1',
+    name: 'Unpaid Invoices',
+    config: { 'Status': { op: 'Is Not', val: 'Paid' } },
+    fields: ['Status'],
+  },
+  {
+    id: 'sf-fin-2',
+    name: 'Overdue Invoices',
+    config: { 'Status': { op: 'Is', val: 'Overdue' } },
+    fields: ['Status'],
+  },
+];
 
-  if (!open) return null;
+const SYSTEM_FILTERS = ['Record Action', 'Touched Records', 'Untouched Records'];
+const FIELD_FILTERS = [
+  'Account Name', 'Amount', 'Balance', 'Due Date', 'Invoice Date', 'Invoice Number', 'Invoice Type', 'Notes', 'Paid Amount', 'Status'
+];
 
-  const filteredCols = ALL_COLUMNS.filter(c => c.toLowerCase().includes(search.toLowerCase()));
+const FILTER_TYPES = {
+  Text: ['Contains', 'Equals', 'Starts With', 'Is Empty'],
+  Number: ['Equals', 'Greater Than', 'Less Than', 'Between'],
+  Date: ['Before', 'After', 'Between'],
+  Dropdown: ['Is', 'Is Not']
+};
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50" onClick={onClose}>
-      <div className="bg-white rounded-lg shadow-xl w-[400px] max-w-full flex flex-col max-h-[85vh] overflow-hidden" onClick={e => e.stopPropagation()}>
-        <div className="px-5 py-4 border-b border-line flex items-center justify-between">
-          <h2 className="text-[16px] font-semibold text-primary">Manage Columns</h2>
-        </div>
-        <div className="p-4 border-b border-line">
-          <div className="relative">
-            <Search className="absolute left-3 top-2.5 text-ink-400" size={16} />
-            <input type="text" placeholder="Search" className="w-full h-9 pl-9 pr-3 text-[14px] border border-line rounded focus:border-primary outline-none" value={search} onChange={e => setSearch(e.target.value)} />
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 thin-scroll">
-          {filteredCols.map(c => {
-            const isMandatory = c === 'Invoice Number';
-            const isChecked = selected.has(c);
-            return (
-              <label key={c} className="flex items-start gap-3 cursor-pointer">
-                <input type="checkbox" className="cb mt-1" disabled={isMandatory} checked={isChecked || isMandatory} onChange={(e) => {
-                  if (isMandatory) return;
-                  const next = new Set(selected);
-                  if (e.target.checked) next.add(c);
-                  else next.delete(c);
-                  setSelected(next);
-                }} />
-                <span className="text-[14px] font-medium text-ink flex-1">
-                  {c}{isMandatory && <span className="text-red-500 ml-0.5">*</span>}
-                </span>
-              </label>
-            );
-          })}
-        </div>
-        <div className="p-4 border-t border-line flex items-center justify-center gap-3">
-          <button onClick={onClose} className="btn-secondary h-8 px-4 rounded text-[13px]">Cancel</button>
-          <button onClick={() => onSave(Array.from(selected))} className="btn-primary h-8 px-4 rounded text-[13px]">Save</button>
-        </div>
-      </div>
-    </div>
-  );
-}
+const getFieldType = (name) => {
+  if (name.includes('Date')) return 'Date';
+  if (['Amount', 'Paid Amount', 'Balance'].includes(name)) return 'Number';
+  if (['Invoice Type', 'Status', 'Account Name'].includes(name)) return 'Dropdown';
+  return 'Text';
+};
 
 export default function ZohoFinance() {
   const { invoices, accounts, baselines, accountName, accountsById, createRecord, updateRecord, deleteRecords } = useCRM();
@@ -189,8 +173,21 @@ export default function ZohoFinance() {
   const [confirm, setConfirm] = useState(null);
 
   const [manageColsOpen, setManageColsOpen] = useState(false);
-  const [pageSize, setPageSize] = useState(10);
-  const [wrapText, setWrapText] = useState(true);
+  const [pageSize, setPageSize] = useState(() => {
+    try {
+      const saved = localStorage.getItem('zoho_finance_page_size');
+      if (saved) return Number(saved);
+    } catch (e) {}
+    return 100;
+  });
+  const [viewMode, setViewMode] = useState(() => {
+    try {
+      return localStorage.getItem('zoho_finance_view_mode') || 'wrap';
+    } catch (e) {
+      return 'wrap';
+    }
+  });
+  const wrapText = viewMode === 'wrap';
   const [visibleColumns, setVisibleColumns] = useState(() => {
     try {
       const saved = localStorage.getItem('zoho_finance_cols');
@@ -207,7 +204,25 @@ export default function ZohoFinance() {
     return [];
   });
 
+  const [filterSearch, setFilterSearch] = useState('');
+  const [selectedFields, setSelectedFields] = useState(new Set(['Status', 'Invoice Type']));
+  const [filterConfig, setFilterConfig] = useState({
+    'Status': { op: 'Is', val: '' },
+    'Invoice Type': { op: 'Is', val: '' },
+  });
   const [colFilters, setColFilters] = useState({});
+  const [savedFilters, setSavedFilters] = useState(() => {
+    try {
+      const saved = localStorage.getItem('zoho_finance_saved_filters');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return DEFAULT_SAVED_FILTERS;
+  });
+  const [activeSavedFilterId, setActiveSavedFilterId] = useState(null);
+  const [saveFilterModalOpen, setSaveFilterModalOpen] = useState(false);
+  const [renameFilterModalOpen, setRenameFilterModalOpen] = useState(false);
+  const [filterToRename, setFilterToRename] = useState(null);
+  const [filterToDelete, setFilterToDelete] = useState(null);
 
   const handleTogglePin = (colKey, col) => {
     const targetName = col?.colName || col?.header || colKey;
@@ -341,8 +356,181 @@ export default function ZohoFinance() {
   const accessors = useMemo(() => ({ account: (i) => accountName(i.accountId), balance: balanceOf }), [accountName]);
   const table = useTable(filtered, { accessors, defaultSort: { key: 'number', dir: 'asc' }, pageSize });
   const set = (k) => (v) => { setF((s) => ({ ...s, [k]: v })); table.setPage(1); };
-  const reset = () => { setF(EMPTY); setColFilters({}); setSearch(''); setRange(DEFAULT_RANGE); setSavedView('all'); };
+  const reset = () => { setF(EMPTY); setColFilters({}); setFilterConfig({}); setSelectedFields(new Set()); setSearch(''); setRange(DEFAULT_RANGE); setSavedView('all'); setActiveSavedFilterId(null); };
   const moreCount = ['minAmt', 'maxAmt', 'dueFrom', 'dueTo', 'withBalance'].filter((k) => f[k]).length + Object.keys(colFilters).length;
+
+  const hasActiveFilter = useMemo(() => {
+    return Object.values(colFilters).some(
+      (conf) => conf && (conf.val !== '' || conf.op === 'Is Empty')
+    ) || Object.values(filterConfig).some(
+      (conf) => conf && (conf.val !== '' || conf.op === 'Is Empty')
+    ) || Boolean(f.minAmt || f.maxAmt || f.dueFrom || f.dueTo || f.withBalance || f.status || f.type || f.account);
+  }, [colFilters, filterConfig, f]);
+
+  const resolveFieldName = (colKey, column) => {
+    if (column?.colName) return column.colName;
+    if (column?.header) return column.header;
+    return colKey;
+  };
+
+  const handleOpenFilterSidebar = (colKey, column) => {
+    const targetField = resolveFieldName(colKey, column);
+    setFiltersOpen(true);
+    setFilterSearch('');
+
+    setSelectedFields((prev) => {
+      const next = new Set(prev);
+      next.add(targetField);
+      return next;
+    });
+
+    setFilterConfig((prev) => {
+      if (!prev[targetField]) {
+        const fType = getFieldType(targetField);
+        return {
+          ...prev,
+          [targetField]: { op: (FILTER_TYPES[fType] || ['Contains'])[0], val: '' },
+        };
+      }
+      return prev;
+    });
+
+    setTimeout(() => {
+      const slug = targetField.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+      const el = document.getElementById(`filter-field-${slug}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const input = el.querySelector('input:not([type="checkbox"]), select');
+        if (input) input.focus();
+      }
+    }, 150);
+  };
+
+  const toggleField = (field) => {
+    const next = new Set(selectedFields);
+    if (next.has(field)) {
+      next.delete(field);
+      setFilterConfig(prev => { const p = { ...prev }; delete p[field]; return p; });
+      setColFilters(prev => { const p = { ...prev }; delete p[field]; return p; });
+    } else {
+      next.add(field);
+      setFilterConfig(prev => ({ ...prev, [field]: { op: (FILTER_TYPES[getFieldType(field)] || ['Contains'])[0], val: '' } }));
+    }
+    setSelectedFields(next);
+  };
+
+  const setConfig = (field, k, v) => setFilterConfig(prev => ({ ...prev, [field]: { ...prev[field], [k]: v } }));
+  const applyFilters = () => {
+    setColFilters(prev => ({ ...prev, ...filterConfig }));
+    table.setPage(1);
+  };
+
+  const handleApplySavedFilter = (sf) => {
+    setActiveSavedFilterId(sf.id);
+    setSelectedFields(new Set(sf.fields || Object.keys(sf.config)));
+    setFilterConfig({ ...sf.config });
+    setColFilters({ ...sf.config });
+    table.setPage(1);
+  };
+
+  const handleUpdateSavedFilter = (sfId) => {
+    setSavedFilters((prev) => {
+      const next = prev.map((item) => {
+        if (item.id === sfId) {
+          return {
+            ...item,
+            config: { ...colFilters, ...filterConfig },
+            fields: Array.from(selectedFields),
+          };
+        }
+        return item;
+      });
+      localStorage.setItem('zoho_finance_saved_filters', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const handleRenameSavedFilter = (sfId, newName) => {
+    setSavedFilters((prev) => {
+      const next = prev.map((item) => (item.id === sfId ? { ...item, name: newName } : item));
+      localStorage.setItem('zoho_finance_saved_filters', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const handleDeleteSavedFilter = (sfId) => {
+    setSavedFilters((prev) => {
+      const next = prev.filter((item) => item.id !== sfId);
+      localStorage.setItem('zoho_finance_saved_filters', JSON.stringify(next));
+      return next;
+    });
+    if (activeSavedFilterId === sfId) {
+      setActiveSavedFilterId(null);
+    }
+    setFilterToDelete(null);
+  };
+
+  const handleSaveNewFilter = (name) => {
+    if (savedFilters.length >= MAX_SAVED_FILTERS) return;
+    const newFilter = {
+      id: `sf-${Date.now()}`,
+      name,
+      config: { ...colFilters, ...filterConfig },
+      fields: Array.from(selectedFields),
+    };
+    const next = [...savedFilters, newFilter];
+    setSavedFilters(next);
+    localStorage.setItem('zoho_finance_saved_filters', JSON.stringify(next));
+    setActiveSavedFilterId(newFilter.id);
+    setSaveFilterModalOpen(false);
+  };
+
+  const renderFieldList = (list) => {
+    const q = filterSearch.trim().toLowerCase();
+    const matches = q ? list.filter(item => item.toLowerCase().includes(q)) : list;
+    if (matches.length === 0) return null;
+    return (
+      <div className="pl-5 pb-4 space-y-3 max-h-[400px] overflow-y-auto thin-scroll">
+        {matches.map(field => {
+          const checked = selectedFields.has(field);
+          const conf = filterConfig[field];
+          const type = getFieldType(field);
+          const ops = FILTER_TYPES[type] || ['Contains', 'Equals'];
+          return (
+            <div key={field} id={`filter-field-${field.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}`} className="space-y-1.5">
+              <label className="flex items-start gap-2.5 text-[13.5px] text-ink-600 cursor-pointer leading-snug">
+                <input type="checkbox" className="cb mt-0.5" checked={checked} onChange={() => toggleField(field)} />
+                {field}
+              </label>
+              {checked && conf && (
+                <div className="pl-[26px] space-y-1.5 mt-1 text-[13px]">
+                  <select className="w-full h-8 px-2 border border-line rounded-md bg-white" value={conf.op} onChange={(e) => setConfig(field, 'op', e.target.value)}>
+                    {ops.map(o => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                  {type === 'Dropdown' ? (
+                    <select className="w-full h-8 px-2 border border-line rounded-md bg-white" value={conf.val} onChange={(e) => setConfig(field, 'val', e.target.value)}>
+                      <option value="">Select...</option>
+                      {(filterOptionsContext[field] || []).map(o => <option key={o.value || o} value={o.value || o}>{o.label || o}</option>)}
+                    </select>
+                  ) : type === 'Date' ? (
+                    <>
+                      <input type="date" className="w-full h-8 px-2 border border-line rounded-md" value={conf.val} onChange={(e) => setConfig(field, 'val', e.target.value)} />
+                      {conf.op === 'Between' && <input type="date" className="w-full h-8 px-2 border border-line rounded-md mt-1" value={conf.val2 || ''} onChange={(e) => setConfig(field, 'val2', e.target.value)} />}
+                    </>
+                  ) : (
+                    <>
+                      {conf.op !== 'Is Empty' && <input type={type === 'Number' ? 'number' : 'text'} className="w-full h-8 px-2 border border-line rounded-md" value={conf.val} onChange={(e) => setConfig(field, 'val', e.target.value)} />}
+                      {conf.op === 'Between' && type === 'Number' && <input type="number" className="w-full h-8 px-2 border border-line rounded-md mt-1" value={conf.val2 || ''} onChange={(e) => setConfig(field, 'val2', e.target.value)} />}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
 
   const filterOptionsContext = useMemo(() => ({
     'Invoice Type': INVOICE_TYPES.map(s => ({ value: s, label: s })),
@@ -359,6 +547,7 @@ export default function ZohoFinance() {
     onTogglePin: handleTogglePin,
     onHideColumn: handleHideColumn,
     onFilterColumn: handleFilterColumn,
+    onOpenFilterSidebar: handleOpenFilterSidebar,
     appliedFilters: colFilters,
     filterOptions: filterOptionsContext,
   }), [pinnedColumns, colFilters, filterOptionsContext, visibleColumns]);
@@ -461,18 +650,50 @@ export default function ZohoFinance() {
     </Dropdown>
   );
 
-  const allColumnsDef = useMemo(() => ({
-    'Invoice Number': { key: 'number', header: 'Invoice Number', sortable: true, render: (i) => <button onClick={() => setViewing(i.id)} className="text-primary hover:underline whitespace-nowrap">{i.number}</button> },
-    'Account Name': { key: 'account', header: 'Account Name', sortable: true, render: (i) => <Link to={`/accounts?open=${i.accountId}`} className="text-ink-600 hover:text-primary whitespace-nowrap">{accountName(i.accountId)}</Link> },
-    'Invoice Type': { key: 'type', header: 'Invoice Type', sortable: true, render: (i) => <StatusBadge kind="invoiceType" value={i.type} size="sm" className="min-w-[96px]" /> },
-    'Invoice Date': { key: 'invoiceDate', header: 'Invoice Date', sortable: true, className: 'whitespace-nowrap', render: (i) => fmtDate(i.invoiceDate) },
-    'Due Date': { key: 'dueDate', header: 'Due Date', sortable: true, className: 'whitespace-nowrap', render: (i) => <span className={balanceOf(i) > 0 && i.dueDate < todayISO() ? 'text-danger-700' : ''}>{fmtDate(i.dueDate)}</span> },
-    'Amount': { key: 'amount', header: 'Amount (₹)', sortable: true, render: (i) => fmtNum(i.amount) },
-    'Paid Amount': { key: 'paidAmount', header: 'Paid Amount (₹)', sortable: true, render: (i) => fmtNum(i.paidAmount) },
-    'Balance': { key: 'balance', header: 'Balance (₹)', sortable: true, render: (i) => <span className={balanceOf(i) ? 'text-ink' : ''}>{fmtNum(balanceOf(i))}</span> },
-    'Status': { key: 'status', header: 'Status', sortable: true, render: (i) => statusMenu(i, <button type="button" title="Update payment status" className={`inline-flex items-center justify-center h-[22px] min-w-[66px] px-2 rounded-md text-[12px] font-medium whitespace-nowrap ${badgeTone('invoiceStatus', i.status)}`}>{i.status}</button>) },
-    'Notes': { key: 'notes', header: 'Notes', sortable: false, render: (i) => <span className="truncate max-w-[150px]">{i.notes || '—'}</span> },
-  }), [accountName]);
+  const allColumnsDef = useMemo(() => {
+    const invCol = { key: 'number', header: 'Invoice Number', sortable: true, render: (i) => <button onClick={() => setViewing(i.id)} className="text-primary hover:underline whitespace-nowrap">{i.number}</button> };
+    const accCol = { key: 'account', header: 'Account Name', sortable: true, render: (i) => <Link to={`/accounts?open=${i.accountId}`} className="text-ink-600 hover:text-primary whitespace-nowrap">{accountName(i.accountId)}</Link> };
+    const dateCol = { key: 'invoiceDate', header: 'Invoice Date', sortable: true, className: 'whitespace-nowrap', render: (i) => fmtDate(i.invoiceDate) };
+    const statusCol = { key: 'status', header: 'Status', sortable: true, render: (i) => statusMenu(i, <button type="button" title="Update payment status" className={`inline-flex items-center justify-center h-[22px] min-w-[66px] px-2 rounded-md text-[12px] font-medium whitespace-nowrap ${badgeTone('invoiceStatus', i.status)}`}>{i.status}</button>) };
+
+    return {
+      'Invoice Number': invCol,
+      'Invoice / Estimate Number': { ...invCol, header: 'Invoice / Estimate Number' },
+      'Account Name': accCol,
+      'Customer': { ...accCol, header: 'Customer' },
+      'Invoice Type': { key: 'type', header: 'Invoice Type', sortable: true, render: (i) => <StatusBadge kind="invoiceType" value={i.type} size="sm" className="min-w-[96px]" /> },
+      'Invoice Date': dateCol,
+      'Created Date': { ...dateCol, header: 'Created Date' },
+      'Due Date': { key: 'dueDate', header: 'Due Date', sortable: true, className: 'whitespace-nowrap', render: (i) => <span className={balanceOf(i) > 0 && i.dueDate < todayISO() ? 'text-danger-700' : ''}>{fmtDate(i.dueDate)}</span> },
+      'Amount': { key: 'amount', header: 'Amount (₹)', sortable: true, render: (i) => fmtNum(i.amount) },
+      'Paid Amount': { key: 'paidAmount', header: 'Paid Amount (₹)', sortable: true, render: (i) => fmtNum(i.paidAmount) },
+      'Balance': { key: 'balance', header: 'Balance (₹)', sortable: true, render: (i) => <span className={balanceOf(i) ? 'text-ink' : ''}>{fmtNum(balanceOf(i))}</span> },
+      'Status': statusCol,
+      'Payment Status': { ...statusCol, header: 'Payment Status' },
+      'Notes': { key: 'notes', header: 'Notes', sortable: false, render: (i) => <span className="truncate max-w-[150px]">{i.notes || '—'}</span> },
+    };
+  }, [accountName]);
+
+  const handleInlineCellEdit = (invId, colKey, newValue) => {
+    const keyMap = {
+      'Invoice Number': 'number',
+      'Invoice / Estimate Number': 'number',
+      'Notes': 'notes',
+      'Amount': 'amount',
+      'Amount (₹)': 'amount',
+      'Paid Amount': 'paidAmount',
+      'Status': 'status',
+      'Payment Status': 'status',
+    };
+    const propKey = keyMap[colKey] || colKey;
+    let finalVal = newValue;
+    if (propKey === 'amount' || propKey === 'paidAmount') {
+      const parsed = Number(String(newValue).replace(/[^0-9.]/g, ''));
+      finalVal = isNaN(parsed) ? 0 : parsed;
+    }
+    updateRecord('invoices', invId, { [propKey]: finalVal });
+    toast.success('Updated successfully');
+  };
 
   const columns = useMemo(() => {
     const cols = visibleColumns.map(c => ({
@@ -499,6 +720,8 @@ export default function ZohoFinance() {
           sidebarToggle: { isOpen: filtersOpen, onToggle: () => setFiltersOpen((o) => !o) },
           filterActive: filtersOpen,
           onFilter: () => setFiltersOpen((o) => !o),
+          hasActiveFilter,
+          onSaveFilter: () => setSaveFilterModalOpen(true),
           sortOptions: [{ key: 'number', label: 'Invoice Number' }, { key: 'invoiceDate', label: 'Invoice Date' }, { key: 'dueDate', label: 'Due Date' }, { key: 'amount', label: 'Amount' }, { key: 'balance', label: 'Balance' }],
           sort: table.sort,
           onSort: table.setSort,
@@ -551,40 +774,134 @@ export default function ZohoFinance() {
 
       <div className="flex gap-3 items-start">
         <aside
-          className={`card hidden md:block shrink-0 px-3.5 py-4 sticky top-[72px] max-h-[calc(100vh-86px)] overflow-y-auto thin-scroll transition-all duration-300 ease-in-out ${
-            filtersOpen ? 'w-[220px] opacity-100' : 'w-0 opacity-0 border-0 p-0 overflow-hidden -mr-3 pointer-events-none'
+          className={`card hidden md:flex flex-col shrink-0 sticky top-[72px] h-[calc(100vh-86px)] overflow-hidden transition-all duration-300 ease-in-out ${
+            filtersOpen ? 'w-[250px] opacity-100' : 'w-0 opacity-0 border-0 p-0 overflow-hidden -mr-3 pointer-events-none'
           }`}
         >
-             <div className="flex items-center justify-between mb-3">
-               <h2 className="text-[15px] font-semibold text-ink whitespace-nowrap">Filter Invoices by</h2>
-               {(moreCount > 0 || search || range.from !== DEFAULT_RANGE.from || range.to !== DEFAULT_RANGE.to) && <button onClick={reset} className="text-[12.5px] text-primary hover:underline">Clear</button>}
-             </div>
-             
-             <div className="relative mb-5">
-               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-2.5 top-2.5 text-ink-400"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-               <input type="text" placeholder="Search" className="w-full h-9 pl-8 pr-3 text-[13px] border border-line rounded-md focus:border-primary outline-none" value={search} onChange={(e) => { setSearch(e.target.value); table.setPage(1); }} />
-             </div>
+          <div className="px-3.5 pt-4 pb-2">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-[15px] font-semibold text-ink whitespace-nowrap">Filter Invoices by</h2>
+              {(moreCount > 0 || search || filterSearch || range.from !== DEFAULT_RANGE.from || range.to !== DEFAULT_RANGE.to) && <button onClick={reset} className="text-[12.5px] text-primary hover:underline">Clear</button>}
+            </div>
+            
+            <div className="relative mb-2">
+              <Search className="absolute left-2.5 top-2.5 text-ink-400" size={14} />
+              <input type="text" placeholder="Search" className="w-full h-9 pl-8 pr-3 text-[13px] border border-line rounded-md focus:border-primary outline-none" value={filterSearch} onChange={(e) => setFilterSearch(e.target.value)} />
+            </div>
+          </div>
 
-             <details className="group" open>
-               <summary className="py-2.5 text-[14px] font-semibold text-ink cursor-pointer select-none flex items-center gap-1 -ml-1">
-                 <ChevronDown size={16} className="group-open:rotate-180 transition-transform -rotate-90" />
-                 Filter By Fields
-               </summary>
-               <div className="pl-5 pb-4 space-y-3">
-                  {[
-                    'Account Name', 'Adjustments', 'Balance', 'Client Viewed', 'Contact Name', 
-                    'Created By', 'Created Time', 'Deal Name', 'Discount Amount', 'Discount Percentage', 
-                    'Due Date', 'Exchange Rate (Invoice)', 'Grand Total', 'Invoice Date', 'Invoice ID', 
-                    'Invoice Number', 'Invoice Owner', 'Last Activity Time', 'Modified By'
-                  ].map(lbl => (
-                    <label key={lbl} className="flex items-start gap-2.5 text-[13.5px] text-ink-600 cursor-pointer leading-snug">
-                      <input type="checkbox" className="cb mt-0.5" />
-                      {lbl}
-                    </label>
-                  ))}
-               </div>
-             </details>
-          </aside>
+          <div className="flex-1 overflow-y-auto thin-scroll px-3.5 pb-4">
+            <details className="group mb-2" open={!filterSearch}>
+              <summary className="py-2.5 text-[14px] font-semibold text-ink cursor-pointer select-none flex items-center justify-between -ml-1">
+                <div className="flex items-center gap-1">
+                  <ChevronDown size={16} className="group-open:rotate-180 transition-transform -rotate-90" />
+                  Saved Filters
+                </div>
+                <span className="text-[11px] font-medium bg-line text-ink-600 px-2 py-0.5 rounded-full" title="Saved presets count">
+                  {savedFilters.length} / {MAX_SAVED_FILTERS} Saved Filters
+                </span>
+              </summary>
+              <div className="pl-4 pb-3 space-y-1.5 text-[13px] text-ink-600">
+                {savedFilters.length === 0 ? (
+                  <div className="text-[12.5px] text-ink-400 py-1 pl-1">No saved filters yet</div>
+                ) : (
+                  savedFilters.map((sf) => {
+                    const isActive = activeSavedFilterId === sf.id;
+                    return (
+                      <div
+                        key={sf.id}
+                        className={`group/sf flex items-center justify-between py-1 px-2 rounded-md transition-colors ${
+                          isActive ? 'bg-primary-50 text-primary font-semibold' : 'hover:bg-page'
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => handleApplySavedFilter(sf)}
+                          className="truncate text-left flex-1 hover:text-primary"
+                          title={`Apply preset "${sf.name}"`}
+                        >
+                          {sf.name}
+                        </button>
+                        <div className="flex items-center gap-1 opacity-70 group-hover/sf:opacity-100 ml-1">
+                          {isActive && hasActiveFilter && (
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateSavedFilter(sf.id)}
+                              className="p-1 hover:text-primary text-ink-400"
+                              title="Update this preset with current conditions"
+                            >
+                              <Check size={13} />
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFilterToRename(sf);
+                              setRenameFilterModalOpen(true);
+                            }}
+                            className="p-1 hover:text-primary text-ink-400"
+                            title="Rename filter"
+                          >
+                            <Edit2 size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setFilterToDelete(sf)}
+                            className="p-1 hover:text-red-500 text-ink-400"
+                            title="Delete filter"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+
+                {hasActiveFilter && (
+                  <div className="pt-1.5 pl-1">
+                    {savedFilters.length < MAX_SAVED_FILTERS ? (
+                      <button
+                        type="button"
+                        onClick={() => setSaveFilterModalOpen(true)}
+                        className="text-primary hover:underline text-[12.5px] font-medium flex items-center gap-1"
+                      >
+                        <Plus size={13} /> Save Current Filter
+                      </button>
+                    ) : (
+                      <span className="text-[11.5px] text-red-500 block font-medium">
+                        Maximum 10 saved filters allowed.
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </details>
+
+            <details className="group" open>
+              <summary className="py-2.5 text-[14px] font-semibold text-ink cursor-pointer select-none flex items-center gap-1 -ml-1">
+                <ChevronDown size={16} className="group-open:rotate-180 transition-transform -rotate-90" />
+                System Defined Filters
+              </summary>
+              {renderFieldList(SYSTEM_FILTERS)}
+            </details>
+
+            <details className="group" open>
+              <summary className="py-2.5 text-[14px] font-semibold text-ink cursor-pointer select-none flex items-center gap-1 -ml-1">
+                <ChevronDown size={16} className="group-open:rotate-180 transition-transform -rotate-90" />
+                Filter By Fields
+              </summary>
+              {renderFieldList(FIELD_FILTERS)}
+            </details>
+          </div>
+
+          {(Object.keys(filterConfig).length > 0 || Object.keys(colFilters).length > 0) && (
+            <div className="px-3.5 py-3 border-t border-line bg-page flex gap-2">
+              <button onClick={applyFilters} className="btn-primary flex-1 h-8 text-[13px]">Apply Filter</button>
+              <button onClick={() => { setFilterConfig({}); setSelectedFields(new Set()); setColFilters({}); }} className="btn-secondary flex-1 h-8 text-[13px]">Clear Filter</button>
+            </div>
+          )}
+        </aside>
 
         <div className="flex-1 min-w-0">
           <div className="grid grid-cols-1 xl:grid-cols-[1fr_1.1fr_1fr] gap-3 mb-3">
@@ -639,32 +956,29 @@ export default function ZohoFinance() {
             dense={dense}
             minWidth={1180}
             columnMenu={columnMenuConfig}
+            viewMode={viewMode}
             emptyAction={<button className="btn-primary mt-2 h-9" onClick={() => setForm({ mode: 'create', record: blank() })}><Plus size={16} />Create Invoice</button>}
             headerExtra={
               <th className="th w-[44px] text-center p-0">
-                <Dropdown width={180} align="right" trigger={
-                  <button type="button" className="h-7 w-7 inline-flex items-center justify-center rounded border border-line bg-white hover:bg-page mt-1">
-                    <Settings2 size={15} className="text-ink-600" />
-                  </button>
-                }>
-                  {(close) => (
-                    <div className="py-1">
-                      <MenuItem close={close} onClick={() => setManageColsOpen(true)}>Manage Columns</MenuItem>
-                      <MenuItem close={close} onClick={() => { localStorage.removeItem('zoho_finance_cols'); localStorage.removeItem('zoho_finance_pinned_cols'); setPinnedColumns([]); setVisibleColumns(['Invoice Number', 'Account Name', 'Invoice Type', 'Invoice Date', 'Due Date', 'Amount', 'Paid Amount', 'Balance', 'Status']); }}>Reset Column Size</MenuItem>
-                      <MenuDivider />
-                      <div className="px-3 py-1.5 text-[13px] font-medium text-ink-500 flex justify-between">Records Per Page <span className="text-ink-600 font-semibold">{pageSize} ▸</span></div>
-                      <div className="pl-4 pr-2 pb-1 space-y-0.5">
-                         {[10, 25, 50, 100].map(sz => <MenuItem key={sz} close={close} active={pageSize === sz} onClick={() => { setPageSize(sz); table.setPage(1); }}>{sz}</MenuItem>)}
-                      </div>
-                      <MenuDivider />
-                      <div className="px-3 py-1.5 text-[13px] font-medium text-ink-500 flex justify-between">View Mode <span className="text-ink-600 font-semibold">{wrapText ? 'Wrap Text' : 'No Wrap'} ▸</span></div>
-                      <div className="pl-4 pr-2 pb-1 space-y-0.5">
-                         <MenuItem close={close} active={wrapText} onClick={() => setWrapText(true)}>Wrap Text</MenuItem>
-                         <MenuItem close={close} active={!wrapText} onClick={() => setWrapText(false)}>No Wrap</MenuItem>
-                      </div>
-                    </div>
-                  )}
-                </Dropdown>
+                <ViewSettingsMenu
+                  onManageColumns={() => setManageColsOpen(true)}
+                  onResetColumnSize={() => {
+                    localStorage.removeItem('zoho_finance_pinned_cols');
+                    setPinnedColumns([]);
+                  }}
+                  hasCustomColumnSize={pinnedColumns.length > 0}
+                  pageSize={pageSize}
+                  onPageSizeChange={(sz) => {
+                    setPageSize(sz);
+                    localStorage.setItem('zoho_finance_page_size', sz);
+                    table.setPage(1);
+                  }}
+                  viewMode={viewMode}
+                  onViewModeChange={(mode) => {
+                    setViewMode(mode);
+                    localStorage.setItem('zoho_finance_view_mode', mode);
+                  }}
+                />
               </th>
             }
           />
@@ -673,15 +987,46 @@ export default function ZohoFinance() {
           onMove={setStatus} onCardClick={(i) => setViewing(i.id)} summary={(items) => `${fmtCompact(items.reduce((s, i) => s + balanceOf(i), 0))} outstanding`}
           renderCard={(i) => (<div><div className="flex items-center justify-between"><span className="text-[13.5px] font-semibold text-primary">{i.number}</span><StatusBadge kind="invoiceType" value={i.type} size="sm" /></div><div className="text-[12px] text-ink-500 mt-1">{accountName(i.accountId)} · due {fmtDate(i.dueDate)}</div><div className="flex justify-between mt-2 text-[12.5px]"><span className="text-ink">{fmtINR(i.amount)}</span><span className="text-ink-500">Bal {fmtINR(balanceOf(i))}</span></div></div>)} /></div>}
 
-        {layout === 'grid' && <div className="p-3"><GridView rows={table.pageRows} onCardClick={(i) => setViewing(i.id)} renderCard={(i) => (
-          <>
-            <div className="flex items-center justify-between"><span className="font-semibold text-primary">{i.number}</span><StatusBadge kind="invoiceStatus" value={i.status} size="sm" /></div>
-            <div className="text-[12.5px] text-ink-500 mt-1">{accountName(i.accountId)}</div>
-            <div className="text-[19px] font-bold text-ink mt-3">{fmtINR(i.amount)}</div>
-            <div className="h-1.5 rounded-full bg-[#EEF2F8] mt-2 overflow-hidden"><div className="h-full bg-success" style={{ width: `${pct(i.paidAmount, i.amount)}%` }} /></div>
-            <div className="flex justify-between mt-2 text-[12px] text-ink-500"><span>Paid {fmtINR(i.paidAmount)}</span><span>Due {fmtDate(i.dueDate)}</span></div>
-          </>
-        )} /></div>}
+        {layout === 'grid' && (
+          <div>
+            <SpreadsheetGridView
+              columns={columns}
+              rows={table.pageRows}
+              table={table}
+              loading={refreshing}
+              minWidth={1200}
+              columnMenu={columnMenuConfig}
+              viewMode={viewMode}
+              onCellEdit={handleInlineCellEdit}
+              emptyAction={<button className="btn-primary mt-2 h-9" onClick={() => setForm({ mode: 'create', record: blank() })}><Plus size={16} />Create Invoice</button>}
+              headerExtra={
+                <th className="w-[44px] min-w-[44px] max-w-[44px] text-center p-0 border-b border-[#CBD5E1] bg-[#F4F6F9]">
+                  <ViewSettingsMenu
+                    onManageColumns={() => setManageColsOpen(true)}
+                    onResetColumnSize={() => {
+                      localStorage.removeItem('zoho_finance_cols');
+                      localStorage.removeItem('zoho_finance_pinned_cols');
+                      setPinnedColumns([]);
+                      setVisibleColumns(['Invoice Number', 'Account Name', 'Invoice Type', 'Invoice Date', 'Due Date', 'Amount', 'Paid Amount', 'Balance', 'Status']);
+                    }}
+                    pageSize={pageSize}
+                    onPageSizeChange={(newSize) => {
+                      setPageSize(newSize);
+                      table.setPageSize(newSize);
+                      try { localStorage.setItem('zoho_finance_page_size', String(newSize)); } catch (e) {}
+                    }}
+                    viewMode={viewMode}
+                    onViewModeChange={(newMode) => {
+                      setViewMode(newMode);
+                      setWrapText(newMode === 'wrap');
+                      try { localStorage.setItem('zoho_finance_view_mode', newMode); } catch (e) {}
+                    }}
+                  />
+                </th>
+              }
+            />
+          </div>
+        )}
 
         {layout === 'chart' && <ChartView title="Invoice count by status (filtered)" data={INVOICE_STATUSES.map((s) => ({ name: s, value: filtered.filter((i) => i.status === s).length, color: STATUS_COLORS[s] }))} valueLabel="Invoices" />}
 
@@ -738,32 +1083,29 @@ export default function ZohoFinance() {
               dense={dense}
               minWidth={1180}
               columnMenu={columnMenuConfig}
+              viewMode={viewMode}
               emptyAction={<button className="btn-primary mt-2 h-9" onClick={() => setForm({ mode: 'create', record: blank() })}><Plus size={16} />Create Invoice</button>}
               headerExtra={
                 <th className="th w-[44px] text-center p-0">
-                  <Dropdown width={180} align="right" trigger={
-                    <button type="button" className="h-7 w-7 inline-flex items-center justify-center rounded border border-line bg-white hover:bg-page mt-1">
-                      <Settings2 size={15} className="text-ink-600" />
-                    </button>
-                  }>
-                    {(close) => (
-                      <div className="py-1">
-                        <MenuItem close={close} onClick={() => setManageColsOpen(true)}>Manage Columns</MenuItem>
-                        <MenuItem close={close} onClick={() => { localStorage.removeItem('zoho_finance_cols'); localStorage.removeItem('zoho_finance_pinned_cols'); setPinnedColumns([]); setVisibleColumns(['Invoice Number', 'Account Name', 'Invoice Type', 'Invoice Date', 'Due Date', 'Amount', 'Paid Amount', 'Balance', 'Status']); }}>Reset Column Size</MenuItem>
-                        <MenuDivider />
-                        <div className="px-3 py-1.5 text-[13px] font-medium text-ink-500 flex justify-between">Records Per Page <span className="text-ink-600 font-semibold">{pageSize} ▸</span></div>
-                        <div className="pl-4 pr-2 pb-1 space-y-0.5">
-                           {[10, 25, 50, 100].map(sz => <MenuItem key={sz} close={close} active={pageSize === sz} onClick={() => { setPageSize(sz); table.setPage(1); }}>{sz}</MenuItem>)}
-                        </div>
-                        <MenuDivider />
-                        <div className="px-3 py-1.5 text-[13px] font-medium text-ink-500 flex justify-between">View Mode <span className="text-ink-600 font-semibold">{wrapText ? 'Wrap Text' : 'No Wrap'} ▸</span></div>
-                        <div className="pl-4 pr-2 pb-1 space-y-0.5">
-                           <MenuItem close={close} active={wrapText} onClick={() => setWrapText(true)}>Wrap Text</MenuItem>
-                           <MenuItem close={close} active={!wrapText} onClick={() => setWrapText(false)}>No Wrap</MenuItem>
-                        </div>
-                      </div>
-                    )}
-                  </Dropdown>
+                  <ViewSettingsMenu
+                    onManageColumns={() => setManageColsOpen(true)}
+                    onResetColumnSize={() => {
+                      localStorage.removeItem('zoho_finance_pinned_cols');
+                      setPinnedColumns([]);
+                    }}
+                    hasCustomColumnSize={pinnedColumns.length > 0}
+                    pageSize={pageSize}
+                    onPageSizeChange={(sz) => {
+                      setPageSize(sz);
+                      localStorage.setItem('zoho_finance_page_size', sz);
+                      table.setPage(1);
+                    }}
+                    viewMode={viewMode}
+                    onViewModeChange={(mode) => {
+                      setViewMode(mode);
+                      localStorage.setItem('zoho_finance_view_mode', mode);
+                    }}
+                  />
                 </th>
               }
             />
@@ -796,38 +1138,35 @@ export default function ZohoFinance() {
             dense={true}
             minWidth={1180}
             columnMenu={columnMenuConfig}
+            viewMode={viewMode}
             emptyAction={<button className="btn-primary mt-2 h-9" onClick={() => setForm({ mode: 'create', record: blank() })}><Plus size={16} />Create Invoice</button>}
             headerExtra={
               <th className="th w-[44px] text-center p-0">
-                <Dropdown width={180} align="right" trigger={
-                  <button type="button" className="h-7 w-7 inline-flex items-center justify-center rounded border border-line bg-white hover:bg-page mt-1">
-                    <Settings2 size={15} className="text-ink-600" />
-                  </button>
-                }>
-                  {(close) => (
-                    <div className="py-1">
-                      <MenuItem close={close} onClick={() => setManageColsOpen(true)}>Manage Columns</MenuItem>
-                      <MenuItem close={close} onClick={() => { localStorage.removeItem('zoho_finance_cols'); localStorage.removeItem('zoho_finance_pinned_cols'); setPinnedColumns([]); setVisibleColumns(['Invoice Number', 'Account Name', 'Invoice Type', 'Invoice Date', 'Due Date', 'Amount', 'Paid Amount', 'Balance', 'Status']); }}>Reset Column Size</MenuItem>
-                      <MenuDivider />
-                      <div className="px-3 py-1.5 text-[13px] font-medium text-ink-500 flex justify-between">Records Per Page <span className="text-ink-600 font-semibold">{pageSize} ▸</span></div>
-                      <div className="pl-4 pr-2 pb-1 space-y-0.5">
-                         {[10, 25, 50, 100].map(sz => <MenuItem key={sz} close={close} active={pageSize === sz} onClick={() => { setPageSize(sz); table.setPage(1); }}>{sz}</MenuItem>)}
-                      </div>
-                      <MenuDivider />
-                      <div className="px-3 py-1.5 text-[13px] font-medium text-ink-500 flex justify-between">View Mode <span className="text-ink-600 font-semibold">{wrapText ? 'Wrap Text' : 'No Wrap'} ▸</span></div>
-                      <div className="pl-4 pr-2 pb-1 space-y-0.5">
-                         <MenuItem close={close} active={wrapText} onClick={() => setWrapText(true)}>Wrap Text</MenuItem>
-                         <MenuItem close={close} active={!wrapText} onClick={() => setWrapText(false)}>No Wrap</MenuItem>
-                      </div>
-                    </div>
-                  )}
-                </Dropdown>
+                <ViewSettingsMenu
+                  onManageColumns={() => setManageColsOpen(true)}
+                  onResetColumnSize={() => {
+                    localStorage.removeItem('zoho_finance_pinned_cols');
+                    setPinnedColumns([]);
+                  }}
+                  hasCustomColumnSize={pinnedColumns.length > 0}
+                  pageSize={pageSize}
+                  onPageSizeChange={(sz) => {
+                    setPageSize(sz);
+                    localStorage.setItem('zoho_finance_page_size', sz);
+                    table.setPage(1);
+                  }}
+                  viewMode={viewMode}
+                  onViewModeChange={(mode) => {
+                    setViewMode(mode);
+                    localStorage.setItem('zoho_finance_view_mode', mode);
+                  }}
+                />
               </th>
             }
           />
         )}
 
-        {(['list', 'grid', 'tile', 'table', 'custom_list'].includes(layout)) && <div className="px-4"><Pagination table={table} noun="invoices" options={[10, 25, 50, 100]} /></div>}
+        {(['list', 'grid', 'tile', 'table', 'custom_list'].includes(layout)) && <div className="px-4"><Pagination table={table} noun="invoices" options={[10, 20, 30, 40, 50, 100]} /></div>}
       </section>
         </div>
       </div>
@@ -886,12 +1225,41 @@ export default function ZohoFinance() {
       <ManageColsModal
         open={manageColsOpen}
         visibleCols={visibleColumns}
+        allColumns={ALL_COLUMNS}
+        mandatoryCols={['Invoice Number']}
         onClose={() => setManageColsOpen(false)}
         onSave={(cols) => {
           setVisibleColumns(cols);
           localStorage.setItem('zoho_finance_cols', JSON.stringify(cols));
           setManageColsOpen(false);
         }}
+      />
+
+      <SaveFilterModal
+        open={saveFilterModalOpen}
+        onClose={() => setSaveFilterModalOpen(false)}
+        onSave={handleSaveNewFilter}
+        currentConfig={filterConfig}
+        count={savedFilters.length}
+        maxCount={MAX_SAVED_FILTERS}
+      />
+
+      <RenameFilterModal
+        open={renameFilterModalOpen}
+        onClose={() => {
+          setRenameFilterModalOpen(false);
+          setFilterToRename(null);
+        }}
+        filter={filterToRename}
+        onRename={handleRenameSavedFilter}
+      />
+
+      <ConfirmDialog
+        open={!!filterToDelete}
+        onClose={() => setFilterToDelete(null)}
+        title="Delete saved filter?"
+        message={filterToDelete ? `Are you sure you want to delete "${filterToDelete.name}"? This action cannot be undone.` : ''}
+        onConfirm={() => handleDeleteSavedFilter(filterToDelete?.id)}
       />
     </div>
   );

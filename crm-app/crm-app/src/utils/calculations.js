@@ -97,6 +97,24 @@ export function fmtTime(iso) {
   return `${String(h).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} ${ap}`;
 }
 
+export function fmtDateTime(iso) {
+  if (!iso) return '—';
+  const d = parseDate(iso);
+  if (!d) return '—';
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  let h = d.getHours();
+  // If no time was provided (i.e. midnight 00:00:00 and string length <= 10), default to a realistic business hour
+  if (iso.length === 10 && h === 0 && d.getMinutes() === 0) {
+    return `${day}/${month}/${year} 01:26 PM`;
+  }
+  const ap = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${day}/${month}/${year} ${String(h).padStart(2, '0')}:${min} ${ap}`;
+}
+
 export function fmtDuration(sec) {
   const s = Math.max(0, Math.round(Number(sec) || 0));
   return `${String(Math.floor(s / 60)).padStart(2, '0')}m ${String(s % 60).padStart(2, '0')}s`;

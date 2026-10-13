@@ -3,13 +3,15 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
   CalendarRange, ChevronDown, Clock3, Columns2, Columns3, Coins, Download, LayoutDashboard, LayoutGrid, List,
   PieChart, Plus, SlidersHorizontal, Table2, Trash2, Trophy, UserCog, XCircle, Search, Check, Settings2,
-  Upload, FileSpreadsheet, Package, FileText, Printer
+  Upload, FileSpreadsheet, Package, FileText, Printer, Bookmark, Edit2, GripVertical, X, Phone, Info
 } from 'lucide-react';
 import { useCRM } from '../../context/CRMContext';
+import { useToast } from '../../components/common/Toast';
 import PageHeader from '../../components/common/PageHeader';
 import StatCard from '../../components/common/StatCard';
 import FilterBar, { MoreFilters, SelectField } from '../../components/common/FilterBar';
 import DataTable from '../../components/common/DataTable';
+import SpreadsheetGridView from '../../components/common/SpreadsheetGridView';
 import Pagination from '../../components/common/Pagination';
 import useTable from '../../components/common/useTable';
 import StatusBadge, { badgeTone } from '../../components/common/StatusBadge';
@@ -18,6 +20,7 @@ import FormModal from '../../components/common/RecordForm';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
 
 import Dropdown, { MenuItem, MenuLabel, MenuDivider } from '../../components/common/Dropdown';
+import ViewSettingsMenu from '../../components/common/ViewSettingsMenu';
 import BulkBar, { BulkButton } from '../../components/common/BulkBar';
 import { ChartView, GridView, KanbanView } from '../../components/common/Views';
 import DealDetail from './DealDetail';
@@ -29,10 +32,11 @@ import CustomViewsModal from './CustomViewsModal';
 import SheetViewModal from './SheetViewModal';
 import PrintViewModal from './PrintViewModal';
 import ImportModal from './ImportModal';
+import SystemFilterControls, { getDefaultSystemFilterConfig, evaluateSystemFilter } from './SystemFilterControls';
 import { useRefresh, useUrlActions } from '../../components/common/hooks';
 import { DEAL_SOURCES, DEPARTMENTS } from '../../data/seedData';
 import {
-  OPEN_STAGES, STAGES, STAGE_COLORS, STAGE_PROBABILITY, dealKpis, fmtCompact, fmtDate, fmtINR, inRange, isOpen, sumBy, todayISO, trend,
+  OPEN_STAGES, STAGES, STAGE_COLORS, STAGE_TEXT_COLORS, STAGE_PROBABILITY, dealKpis, fmtCompact, fmtDate, fmtDateTime, fmtINR, inRange, isOpen, sumBy, todayISO, trend,
 } from '../../utils/calculations';
 import { exportCSV } from '../../utils/exportCSV';
 
@@ -45,55 +49,376 @@ const ALL_COLUMNS = [
 
 function ManageColsModal({ open, onClose, visibleCols, onSave }) {
   const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState(new Set(visibleCols));
+  const [selectedList, setSelectedList] = useState([]);
+  const [unselectedList, setUnselectedList] = useState([]);
+  const [draggedIndex, setDraggedIndex] = useState(null);
 
-  useMemo(() => {
+  useEffect(() => {
     if (open) {
-      setSelected(new Set(visibleCols));
+      const currentSelected = [...visibleCols];
+      if (!currentSelected.includes('Deal Name')) {
+        currentSelected.unshift('Deal Name');
+      }
+      const currentUnselected = ALL_COLUMNS.filter(c => !currentSelected.includes(c));
+      setSelectedList(currentSelected);
+      setUnselectedList(currentUnselected);
       setSearch('');
+      setDraggedIndex(null);
     }
   }, [open, visibleCols]);
 
   if (!open) return null;
 
-  const filteredCols = ALL_COLUMNS.filter(c => c.toLowerCase().includes(search.toLowerCase()));
+  const handleToggleColumn = (col, isCurrentlySelected) => {
+    if (col === 'Deal Name') return;
+
+    if (isCurrentlySelected) {
+      // Move from selected group to unselected group
+      setSelectedList(prev => prev.filter(c => c !== col));
+      setUnselectedList(prev => (prev.includes(col) ? prev : [...prev, col]));
+    } else {
+      // Move from unselected group to end of selected group
+      setUnselectedList(prev => prev.filter(c => c !== col));
+      setSelectedList(prev => (prev.includes(col) ? prev : [...prev, col]));
+    }
+  };
+
+  const handleDragStart = (e, idx) => {
+    setDraggedIndex(idx);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = (e, targetIdx) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === targetIdx) return;
+    setSelectedList(prev => {
+      const next = [...prev];
+      const [moved] = next.splice(draggedIndex, 1);
+      next.splice(targetIdx, 0, moved);
+      return next;
+    });
+    setDraggedIndex(null);
+  };
+
+  const sQuery = search.trim().toLowerCase();
+  const filteredSelected = sQuery ? selectedList.filter(c => c.toLowerCase().includes(sQuery)) : selectedList;
+  const filteredUnselected = sQuery ? unselectedList.filter(c => c.toLowerCase().includes(sQuery)) : unselectedList;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50" onClick={onClose}>
-      <div className="bg-white rounded-lg shadow-xl w-[400px] max-w-full flex flex-col max-h-[85vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-lg shadow-xl w-[440px] max-w-full flex flex-col max-h-[85vh] overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-line flex items-center justify-between">
-          <h2 className="text-[16px] font-semibold text-primary">Manage Columns</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-[16px] font-semibold text-primary">Manage Columns</h2>
+            <span className="text-[12px] text-ink-500 bg-page px-2 py-0.5 rounded border border-line">
+              {selectedList.length} Selected
+            </span>
+          </div>
+          <button type="button" onClick={onClose} className="text-ink-400 hover:text-ink-700">
+            <X size={18} />
+          </button>
         </div>
-        <div className="p-4 border-b border-line">
+
+        <div className="p-4 border-b border-line bg-page/40">
           <div className="relative">
             <Search className="absolute left-3 top-2.5 text-ink-400" size={16} />
-            <input type="text" placeholder="Search" className="w-full h-9 pl-9 pr-3 text-[14px] border border-line rounded focus:border-primary outline-none" value={search} onChange={e => setSearch(e.target.value)} />
+            <input
+              type="text"
+              placeholder="Search columns..."
+              className="w-full h-9 pl-9 pr-3 text-[14px] border border-line rounded-md bg-white focus:border-primary outline-none"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 thin-scroll">
-          {filteredCols.map(c => {
-            const isMandatory = c === 'Deal Name';
-            const isChecked = selected.has(c);
-            return (
-              <label key={c} className="flex items-start gap-3 cursor-pointer">
-                <input type="checkbox" className="cb mt-1" disabled={isMandatory} checked={isChecked || isMandatory} onChange={(e) => {
-                  if (isMandatory) return;
-                  const next = new Set(selected);
-                  if (e.target.checked) next.add(c);
-                  else next.delete(c);
-                  setSelected(next);
-                }} />
-                <span className="text-[14px] font-medium text-ink flex-1">
-                  {c}{isMandatory && <span className="text-red-500 ml-0.5">*</span>}
-                </span>
-              </label>
-            );
-          })}
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 thin-scroll">
+          {/* Selected Columns group at the TOP */}
+          {filteredSelected.length > 0 && (
+            <div>
+              <div className="text-[12px] font-bold text-ink-500 uppercase tracking-wider mb-2 flex items-center justify-between">
+                <span>Selected Columns ({filteredSelected.length})</span>
+                <span className="text-[11px] font-normal lowercase text-ink-400">drag handle to reorder</span>
+              </div>
+              <div className="space-y-1.5">
+                {filteredSelected.map((c) => {
+                  const isMandatory = c === 'Deal Name';
+                  const origIdx = selectedList.indexOf(c);
+                  return (
+                    <div
+                      key={c}
+                      draggable={!sQuery}
+                      onDragStart={(e) => handleDragStart(e, origIdx)}
+                      onDragOver={handleDragOver}
+                      onDrop={(e) => handleDrop(e, origIdx)}
+                      className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-md border border-line bg-white hover:bg-page transition-colors select-none ${draggedIndex === origIdx ? 'opacity-50 border-dashed border-primary' : ''}`}
+                    >
+                      <div className="text-ink-400 cursor-grab active:cursor-grabbing hover:text-ink-700" title="Drag to reorder">
+                        <GripVertical size={14} />
+                      </div>
+                      <label className="flex items-center gap-2.5 flex-1 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="cb"
+                          disabled={isMandatory}
+                          checked={true}
+                          onChange={() => handleToggleColumn(c, true)}
+                        />
+                        <span className="text-[13.5px] font-medium text-ink flex-1">
+                          {c}{isMandatory && <span className="text-red-500 ml-0.5">*</span>}
+                        </span>
+                      </label>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Divider between selected and unselected */}
+          {filteredSelected.length > 0 && filteredUnselected.length > 0 && (
+            <div className="border-t border-line my-3" />
+          )}
+
+          {/* Unselected Columns group BELOW selected columns */}
+          {filteredUnselected.length > 0 && (
+            <div>
+              <div className="text-[12px] font-bold text-ink-500 uppercase tracking-wider mb-2">
+                Available Columns ({filteredUnselected.length})
+              </div>
+              <div className="space-y-1.5">
+                {filteredUnselected.map((c) => (
+                  <div
+                    key={c}
+                    className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-md border border-line/60 bg-page/30 hover:bg-page transition-colors select-none"
+                  >
+                    <div className="w-[14px]" />
+                    <label className="flex items-center gap-2.5 flex-1 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="cb"
+                        checked={false}
+                        onChange={() => handleToggleColumn(c, false)}
+                      />
+                      <span className="text-[13.5px] text-ink-700 flex-1">
+                        {c}
+                      </span>
+                    </label>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {filteredSelected.length === 0 && filteredUnselected.length === 0 && (
+            <div className="text-center py-8 text-ink-400 text-[13px]">
+              No columns match &quot;{search}&quot;
+            </div>
+          )}
         </div>
-        <div className="p-4 border-t border-line flex items-center justify-center gap-3">
-          <button onClick={onClose} className="btn-secondary h-8 px-4 rounded text-[13px]">Cancel</button>
-          <button onClick={() => onSave(Array.from(selected))} className="btn-primary h-8 px-4 rounded text-[13px]">Save</button>
+
+        <div className="p-4 border-t border-line flex items-center justify-end gap-3 bg-white">
+          <button
+            type="button"
+            onClick={onClose}
+            className="btn-secondary h-8 px-4 rounded text-[13px]"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => onSave(selectedList)}
+            className="btn-primary h-8 px-5 rounded text-[13px]"
+          >
+            Save
+          </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+const MAX_SAVED_FILTERS = 10;
+
+const DEFAULT_SAVED_FILTERS = [
+  {
+    id: 'sf-1',
+    name: 'Open Deals',
+    config: { 'Stage': { op: 'Is Not', val: 'Closed Won' } },
+    fields: ['Stage'],
+  },
+  {
+    id: 'sf-2',
+    name: 'Closing Soon',
+    config: { 'Closing Date': { op: 'Before', val: '2026-12-31' } },
+    fields: ['Closing Date'],
+  },
+];
+
+function SaveFilterModal({ open, onClose, onSave, currentConfig, count, maxCount }) {
+  const [filterName, setFilterName] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (open) {
+      setFilterName('');
+      setError('');
+    }
+  }, [open]);
+
+  if (!open) return null;
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const trimmed = filterName.trim();
+    if (!trimmed) {
+      setError('Filter name is required');
+      return;
+    }
+    if (count >= maxCount) {
+      setError(`Maximum ${maxCount} saved filters allowed.`);
+      return;
+    }
+    onSave(trimmed);
+  };
+
+  const activeEntries = Object.entries(currentConfig || {}).filter(
+    ([, conf]) => conf && (conf.val || conf.op === 'Is Empty')
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50" onClick={onClose}>
+      <div className="bg-white rounded-lg shadow-xl w-[400px] max-w-full flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-line flex items-center justify-between">
+          <h2 className="text-[16px] font-semibold text-primary">Save Filter</h2>
+          <button type="button" onClick={onClose} className="text-ink-400 hover:text-ink-700">
+            <X size={18} />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          <div>
+            <label className="block text-[13px] font-medium text-ink-700 mb-1">
+              Filter Name <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              autoFocus
+              placeholder="e.g. High Value Active Deals"
+              className="w-full h-9 px-3 text-[14px] border border-line rounded-md focus:border-primary outline-none"
+              value={filterName}
+              onChange={(e) => {
+                setFilterName(e.target.value);
+                if (error) setError('');
+              }}
+            />
+            {error && <span className="text-[12px] text-red-500 mt-1 block">{error}</span>}
+          </div>
+
+          <div>
+            <span className="text-[12px] font-semibold text-ink-500 uppercase tracking-wider block mb-1.5">
+              Filter Conditions ({activeEntries.length})
+            </span>
+            <div className="bg-page/70 rounded-md p-2.5 max-h-[140px] overflow-y-auto space-y-1 thin-scroll border border-line text-[12.5px] text-ink-700">
+              {activeEntries.length === 0 ? (
+                <div className="text-ink-400">All current filter fields will be saved.</div>
+              ) : (
+                activeEntries.map(([field, conf]) => (
+                  <div key={field} className="flex items-center justify-between">
+                    <span className="font-medium text-ink">{field}:</span>
+                    <span className="text-ink-500">{conf.op} {conf.val ? `"${conf.val}"` : ''}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="text-[12px] text-ink-400 flex justify-between items-center">
+            <span>Saved Filters:</span>
+            <span className="font-semibold text-ink-600">{count} / {maxCount}</span>
+          </div>
+
+          <div className="pt-2 border-t border-line flex justify-end gap-3">
+            <button type="button" onClick={onClose} className="btn-secondary h-8 px-4 rounded text-[13px]">
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={count >= maxCount}
+              className="btn-primary h-8 px-5 rounded text-[13px] disabled:opacity-50"
+            >
+              Save Filter
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function RenameFilterModal({ open, onClose, filter, onRename }) {
+  const [name, setName] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (open && filter) {
+      setName(filter.name || '');
+      setError('');
+    }
+  }, [open, filter]);
+
+  if (!open || !filter) return null;
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError('Filter name is required');
+      return;
+    }
+    onRename(filter.id, trimmed);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50" onClick={onClose}>
+      <div className="bg-white rounded-lg shadow-xl w-[380px] max-w-full flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-line flex items-center justify-between">
+          <h2 className="text-[16px] font-semibold text-primary">Rename Filter</h2>
+          <button type="button" onClick={onClose} className="text-ink-400 hover:text-ink-700">
+            <X size={18} />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          <div>
+            <label className="block text-[13px] font-medium text-ink-700 mb-1">
+              Filter Name <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              autoFocus
+              className="w-full h-9 px-3 text-[14px] border border-line rounded-md focus:border-primary outline-none"
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                if (error) setError('');
+              }}
+            />
+            {error && <span className="text-[12px] text-red-500 mt-1 block">{error}</span>}
+          </div>
+          <div className="pt-2 border-t border-line flex justify-end gap-3">
+            <button type="button" onClick={onClose} className="btn-secondary h-8 px-4 rounded text-[13px]">
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary h-8 px-5 rounded text-[13px]">
+              Save
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
@@ -116,6 +441,53 @@ const getFieldType = (name) => {
   if (name.includes('Amount') || name.includes('Probability') || name.includes('Count') || name.includes('Revenue') || name.includes('Budget')) return 'Number';
   if (['Stage', 'Deal Owner', 'Account Name', 'Contact Name', 'Deal Source', 'Department', 'Type'].includes(name)) return 'Dropdown';
   return 'Text';
+};
+
+const resolveFieldName = (colKey, column) => {
+  const colName = column?.colName || column?.header || colKey;
+  if (FIELD_FILTERS.includes(colName)) return colName;
+  if (SYSTEM_FILTERS.includes(colName)) return colName;
+  if (SUBFORM_FILTERS.includes(colName)) return colName;
+  if (RELATED_MODULE_FILTERS.includes(colName)) return colName;
+
+  const aliasMap = {
+    'name': 'Deal Name',
+    'Deal Name': 'Deal Name',
+    'account': 'Account Name',
+    'accountId': 'Account Name',
+    'Account Name': 'Account Name',
+    'contact': 'Contact Name',
+    'contactId': 'Contact Name',
+    'Contact Name': 'Contact Name',
+    'stage': 'Stage',
+    'Stage': 'Stage',
+    'amount': 'Amount',
+    'Amount': 'Amount',
+    'Amount (₹)': 'Amount',
+    'closingDate': 'Closing Date',
+    'Closing Date': 'Closing Date',
+    'probability': 'Probability (%)',
+    'Probability (%)': 'Probability (%)',
+    'owner': 'Deal Owner',
+    'ownerId': 'Deal Owner',
+    'Deal Owner': 'Deal Owner',
+    'createdOn': 'Created Time',
+    'Created Time': 'Created Time',
+    'source': 'Lead Source',
+    'Lead Source': 'Lead Source',
+    'description': 'Description',
+    'Description': 'Description',
+    'Department': 'Department',
+  };
+
+  if (aliasMap[colKey]) return aliasMap[colKey];
+  if (aliasMap[colName]) return aliasMap[colName];
+
+  const allKnown = [...FIELD_FILTERS, ...SYSTEM_FILTERS, ...SUBFORM_FILTERS, ...RELATED_MODULE_FILTERS];
+  const found = allKnown.find(f => f.toLowerCase() === String(colName).toLowerCase() || f.toLowerCase() === String(colKey).toLowerCase());
+  if (found) return found;
+
+  return colName;
 };
 
 export function stagePatch(deal, stage) {
@@ -154,7 +526,9 @@ export const ALL_9_VIEWS = [
 const DEFAULT_VISIBLE_VIEWS = ['list', 'kanban', 'grid', 'chart', 'timeline', 'split'];
 
 export default function Deals() {
-  const { deals, oldDeals, accounts, contacts, users, accountName, contactName, userName, createRecord, updateRecord, deleteRecords, accountsById } = useCRM();
+  const { deals, oldDeals, accounts, contacts, users, tasks, calls, activity, accountName, contactName, userName, createRecord, updateRecord, deleteRecords, accountsById } = useCRM();
+  const toast = useToast();
+  const contactsById = useMemo(() => Object.fromEntries(contacts.map((c) => [c.id, c])), [contacts]);
   const navigate = useNavigate();
   const { refreshing, refresh } = useRefresh('Deals');
   const [savedView, setSavedView] = useState('all');
@@ -273,17 +647,42 @@ export default function Deals() {
     'Deal Source': { op: 'Is', val: '' },
   });
   const [appliedFilters, setAppliedFilters] = useState({});
+  const [savedFilters, setSavedFilters] = useState(() => {
+    try {
+      const saved = localStorage.getItem('deals_saved_filters');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return DEFAULT_SAVED_FILTERS;
+  });
+  const [activeSavedFilterId, setActiveSavedFilterId] = useState(null);
+  const [saveFilterModalOpen, setSaveFilterModalOpen] = useState(false);
+  const [renameFilterModalOpen, setRenameFilterModalOpen] = useState(false);
+  const [filterToRename, setFilterToRename] = useState(null);
+  const [filterToDelete, setFilterToDelete] = useState(null);
   const [viewSearch, setViewSearch] = useState('');
   
-  const [pageSize, setPageSize] = useState(100);
-  const [wrapText, setWrapText] = useState(true);
+  const [pageSize, setPageSize] = useState(() => {
+    try {
+      const saved = localStorage.getItem('deals_page_size');
+      if (saved) return Number(saved);
+    } catch (e) {}
+    return 100;
+  });
+  const [viewMode, setViewMode] = useState(() => {
+    try {
+      return localStorage.getItem('deals_view_mode') || 'wrap';
+    } catch (e) {
+      return 'wrap';
+    }
+  });
+  const [wrapText, setWrapText] = useState(viewMode === 'wrap');
   const [manageColsOpen, setManageColsOpen] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState(() => {
     try {
       const saved = localStorage.getItem('deals_cols');
       if (saved) return JSON.parse(saved);
     } catch (e) {}
-    return ['Deal Name', 'Account Name', 'Contact Name', 'Stage', 'Amount', 'Closing Date', 'Probability (%)', 'Deal Owner', 'Created Time'];
+    return ['Created Time', 'Categories', 'Deal Name', 'Mobile', 'Remarks', 'Lead Manager 1', 'Stage', 'Deal Owner', 'Amount', 'Closing Date'];
   });
 
   const [pinnedColumns, setPinnedColumns] = useState(() => {
@@ -481,7 +880,21 @@ export default function Deals() {
       
       // Apply dynamic filters
       for (const [key, conf] of Object.entries(appliedFilters)) {
-        if (!conf || (!conf.val && conf.op !== 'Is Empty')) continue; // Skip if no value selected
+        if (!conf) continue;
+
+        if (SYSTEM_FILTERS.includes(key)) {
+          const passed = evaluateSystemFilter(d, key, conf, {
+            calls: calls || [],
+            tasks: tasks || [],
+            activity: activity || [],
+            contacts: contacts || [],
+            users: users || []
+          });
+          if (!passed) return false;
+          continue;
+        }
+
+        if (!conf.val && conf.op !== 'Is Empty') continue; // Skip if no value selected
         
         let recordVal = '';
         if (key === 'Stage' || key === 'stage') recordVal = d.stage;
@@ -571,11 +984,11 @@ export default function Deals() {
       return true;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deals, search, range, appliedFilters, savedView, activeCustomView, accountName, contactName, userName]);
+  }, [deals, search, range, appliedFilters, savedView, activeCustomView, accountName, contactName, userName, calls, tasks, activity, contacts, users]);
 
   const accessors = useMemo(() => ({ account: (d) => accountName(d.accountId), contact: (d) => contactName(d.contactId), owner: (d) => userName(d.ownerId), stage: (d) => STAGES.indexOf(d.stage) }), [accountName, contactName, userName]);
   const table = useTable(filtered, { accessors, pageSize });
-  const reset = () => { setAppliedFilters({}); setFilterConfig({}); setSelectedFields(new Set()); setSearch(''); setRange(DEFAULT_RANGE); setSavedView('all'); setActiveCustomView(null); };
+  const reset = () => { setAppliedFilters({}); setFilterConfig({}); setSelectedFields(new Set()); setSearch(''); setRange(DEFAULT_RANGE); setSavedView('all'); setActiveCustomView(null); setActiveSavedFilterId(null); };
   const moreCount = Object.keys(appliedFilters).length;
 
   const handleFilterColumn = (colKey, filterState, col) => {
@@ -609,12 +1022,107 @@ export default function Deals() {
     table.setPage(1);
   };
 
+  const handleOpenFilterSidebar = (colKey, column) => {
+    const targetField = resolveFieldName(colKey, column);
+    setFiltersOpen(true);
+    setFilterSearch('');
+
+    setSelectedFields((prev) => {
+      const next = new Set(prev);
+      next.add(targetField);
+      return next;
+    });
+
+    setFilterConfig((prev) => {
+      if (!prev[targetField]) {
+        return {
+          ...prev,
+          [targetField]: SYSTEM_FILTERS.includes(targetField)
+            ? getDefaultSystemFilterConfig(targetField)
+            : { op: FILTER_TYPES[getFieldType(targetField)][0], val: '' },
+        };
+      }
+      return prev;
+    });
+
+    setTimeout(() => {
+      const slug = targetField.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+      const el = document.getElementById(`filter-field-${slug}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const input = el.querySelector('input:not([type="checkbox"]), select');
+        if (input) input.focus();
+      }
+    }, 150);
+  };
+
+  const handleApplySavedFilter = (sf) => {
+    setActiveSavedFilterId(sf.id);
+    setSelectedFields(new Set(sf.fields || Object.keys(sf.config)));
+    setFilterConfig({ ...sf.config });
+    setAppliedFilters({ ...sf.config });
+    table.setPage(1);
+  };
+
+  const handleUpdateSavedFilter = (sfId) => {
+    setSavedFilters((prev) => {
+      const next = prev.map((f) => {
+        if (f.id === sfId) {
+          return {
+            ...f,
+            config: { ...filterConfig },
+            fields: Array.from(selectedFields),
+          };
+        }
+        return f;
+      });
+      localStorage.setItem('deals_saved_filters', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const handleRenameSavedFilter = (sfId, newName) => {
+    setSavedFilters((prev) => {
+      const next = prev.map((f) => (f.id === sfId ? { ...f, name: newName } : f));
+      localStorage.setItem('deals_saved_filters', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const handleDeleteSavedFilter = (sfId) => {
+    setSavedFilters((prev) => {
+      const next = prev.filter((f) => f.id !== sfId);
+      localStorage.setItem('deals_saved_filters', JSON.stringify(next));
+      return next;
+    });
+    if (activeSavedFilterId === sfId) {
+      setActiveSavedFilterId(null);
+    }
+    setFilterToDelete(null);
+  };
+
+  const handleSaveNewFilter = (name) => {
+    if (savedFilters.length >= MAX_SAVED_FILTERS) return;
+    const newFilter = {
+      id: `sf-${Date.now()}`,
+      name,
+      config: { ...filterConfig },
+      fields: Array.from(selectedFields),
+    };
+    const next = [...savedFilters, newFilter];
+    setSavedFilters(next);
+    localStorage.setItem('deals_saved_filters', JSON.stringify(next));
+    setActiveSavedFilterId(newFilter.id);
+    setSaveFilterModalOpen(false);
+  };
+
   const columnMenuConfig = useMemo(() => ({
     module: 'deals',
     pinnedColumns,
     onTogglePin: handleTogglePin,
     onHideColumn: handleHideColumn,
     onFilterColumn: handleFilterColumn,
+    onOpenFilterSidebar: handleOpenFilterSidebar,
     appliedFilters,
     filterOptions: filterOptionsContext,
     getFieldType: (k) => getFieldType(k),
@@ -639,7 +1147,27 @@ export default function Deals() {
     { name: 'createdOn', label: 'Created On', type: 'date', required: true },
     { name: 'description', label: 'Description', type: 'textarea', span: 2 },
   ];
-  const blank = (p = {}) => ({ name: '', accountId: p.account || '', contactId: '', stage: 'Need Deal Estimation', probability: 10, amount: '', closingDate: '', ownerId: 'u1', source: 'Website', department: 'Enterprise Sales', createdOn: todayISO(), description: '', lostAtStage: '' });
+  const blank = (p = {}) => ({
+    name: '',
+    accountId: p.account || '',
+    contactId: '',
+    stage: 'Need Deal Estimation',
+    probability: 10,
+    amount: '',
+    closingDate: '',
+    ownerId: 'u1',
+    source: 'Website',
+    department: 'Enterprise Sales',
+    createdOn: todayISO(),
+    createdTime: new Date().toISOString(),
+    categories: 'Translation',
+    leadManager1: 'u7',
+    remarks: '',
+    mobile: '',
+    mobileNo: '',
+    description: '',
+    lostAtStage: ''
+  });
 
   useUrlActions({
     onCreate: (p) => setForm({ mode: 'create', record: blank(p) }),
@@ -648,7 +1176,12 @@ export default function Deals() {
   });
 
   const submit = (v) => {
-    const patch = { ...v, lostAtStage: v.stage === 'Closed Lost' ? v.lostAtStage || form?.record?.stage || 'Need Deal Estimation' : '' };
+    const patch = {
+      ...v,
+      createdTime: v.createdTime || form?.record?.createdTime || new Date().toISOString(),
+      createdOn: v.createdOn || form?.record?.createdOn || todayISO(),
+      lostAtStage: v.stage === 'Closed Lost' ? v.lostAtStage || form?.record?.stage || 'Need Deal Estimation' : ''
+    };
     let saved = null;
     if (form?.mode === 'create') {
       saved = createRecord('deals', patch);
@@ -659,6 +1192,31 @@ export default function Deals() {
       saved = updateRecord('deals', form?.record?.id, patch);
     }
     return saved;
+  };
+
+  const handleInlineCellEdit = (dealId, colKey, newValue) => {
+    const keyMap = {
+      'Deal Name': 'name',
+      'Remarks': 'remarks',
+      'Mobile': 'mobile',
+      'Mobile No': 'mobileNo',
+      'Categories': 'categories',
+      'Description': 'description',
+      'Sales_ No': 'salesNo',
+      'Client Name': 'clientName',
+      'City': 'city',
+      'Amount': 'amount',
+      'Amount (₹)': 'amount',
+      'Lead Source': 'source',
+    };
+    const propKey = keyMap[colKey] || colKey;
+    let finalVal = newValue;
+    if (propKey === 'amount') {
+      const parsed = Number(String(newValue).replace(/[^0-9.]/g, ''));
+      finalVal = isNaN(parsed) ? 0 : parsed;
+    }
+    updateRecord('deals', dealId, { [propKey]: finalVal });
+    toast.success('Updated successfully');
   };
 
   const exportRows = (rows) => exportCSV('deals', rows, [
@@ -675,26 +1233,248 @@ export default function Deals() {
   );
 
   const allColumnsDef = useMemo(() => ({
-    'Deal Name': { key: 'name', header: 'Deal Name', sortable: true, render: (d) => <button type="button" onClick={() => openDeal(d.id)} className="text-primary hover:underline text-left">{d.name}</button> },
-    'Account Name': { key: 'account', header: 'Account Name', sortable: true, render: (d) => <Link to={`/accounts?open=${d.accountId}`} className="text-primary hover:underline">{accountName(d.accountId)}</Link> },
-    'Contact Name': { key: 'contact', header: 'Contact Name', sortable: true, render: (d) => (d.contactId ? <Link to={`/contacts?open=${d.contactId}`} className="text-primary hover:underline">{contactName(d.contactId)}</Link> : <span className="text-ink-400">—</span>) },
-    'Stage': { key: 'stage', header: 'Stage', sortable: true, render: (d) => (
-      stageMenu(d, <button type="button" title="Change stage" className={`inline-flex items-center justify-center gap-1 h-[28px] min-w-[94px] px-2.5 rounded-md text-[12.5px] font-medium ${badgeTone('stage', d.stage)}`}>{d.stage}</button>)
-    ) },
-    'Amount': { key: 'amount', header: 'Amount (₹)', sortable: true, className: 'text-ink', render: (d) => fmtINR(d.amount) },
-    'Closing Date': { key: 'closingDate', header: 'Closing Date', sortable: true, render: (d) => fmtDate(d.closingDate) },
-    'Probability (%)': { key: 'probability', header: 'Probability (%)', sortable: true, render: (d) => <Probability deal={d} /> },
-    'Deal Owner': { key: 'owner', header: 'Deal Owner', sortable: true, render: (d) => <UserAvatar userId={d.ownerId} size={30} withName /> },
-    'Created Time': { key: 'createdOn', header: 'Created Time', sortable: true, render: (d) => fmtDate(d.createdOn) },
-    'Description': { key: 'description', header: 'Description', sortable: true, render: (d) => d.description || '—' },
-    'Lead Source': { key: 'source', header: 'Lead Source', sortable: true, render: (d) => d.source || '—' },
-  }), [accountName, contactName, userName]);
+    'Created Time': {
+      key: 'createdTime',
+      header: 'Created Time *',
+      sortable: true,
+      render: (d) => fmtDateTime(d.createdTime || d.createdOn),
+    },
+    'Categories': {
+      key: 'categories',
+      header: (
+        <span className="inline-flex items-center gap-1.5 font-semibold text-slate-700">
+          <span>Categories</span>
+          <span title="Deal Categories" className="text-slate-400 hover:text-slate-600 cursor-help">
+            <Info size={13} className="stroke-[2.2]" />
+          </span>
+        </span>
+      ),
+      sortable: true,
+      render: (d) => <span className="text-slate-800">{d.categories || 'Translation'}</span>,
+    },
+    'Deal Name': {
+      key: 'name',
+      header: (
+        <div className="inline-flex items-center gap-1.5 font-semibold text-slate-700">
+          <span>Deal Name</span>
+          <span className="text-[11px] font-normal text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+            All <ChevronDown size={11} />
+          </span>
+        </div>
+      ),
+      sortable: true,
+      render: (d) => (
+        <button
+          type="button"
+          onClick={() => openDeal(d.id)}
+          className="text-slate-900 font-medium hover:text-primary hover:underline text-left truncate max-w-full"
+        >
+          {d.name}
+        </button>
+      ),
+    },
+    'Mobile': {
+      key: 'mobile',
+      header: 'Mobile',
+      sortable: true,
+      render: (d) => {
+        const phone = d.mobile || d.mobileNo || (d.contactId ? contactsById[d.contactId]?.phone : '') || '';
+        if (!phone) return <span className="text-slate-400">—</span>;
+        return (
+          <div className="inline-flex items-center gap-2">
+            <span className="text-slate-800 font-normal">{phone}</span>
+            <a
+              href={`tel:${phone}`}
+              title={`Call ${phone}`}
+              onClick={(e) => e.stopPropagation()}
+              className="w-5 h-5 rounded-full bg-[#10B981] hover:bg-[#059669] text-white flex items-center justify-center shadow-xs transition-colors shrink-0"
+            >
+              <Phone size={10} className="fill-white" />
+            </a>
+          </div>
+        );
+      },
+    },
+    'Remarks': {
+      key: 'remarks',
+      header: 'Remarks',
+      sortable: true,
+      render: (d) => <span className="text-slate-700">{d.remarks || '—'}</span>,
+    },
+    'Lead Manager 1': {
+      key: 'leadManager1',
+      header: 'Lead Manager 1',
+      sortable: true,
+      render: (d) => {
+        const manager = d.leadManager1 ? userName(d.leadManager1) : (d.ownerId ? userName(d.ownerId) : '');
+        if (!manager || manager === '-') return <span className="text-slate-400">—</span>;
+        return (
+          <span className="inline-flex items-center px-3 py-0.5 rounded-full text-[12px] font-medium bg-[#E0F2FE] text-[#0369A1] border border-[#BAE6FD]/40">
+            {manager}
+          </span>
+        );
+      },
+    },
+    'Stage': {
+      key: 'stage',
+      header: 'Stage',
+      sortable: true,
+      render: (d) => (
+        stageMenu(d, (
+          <button
+            type="button"
+            title="Change stage"
+            className="inline-flex items-center justify-center px-3 py-1 rounded-full text-[12px] font-medium transition-transform hover:scale-102"
+            style={{
+              backgroundColor: STAGE_COLORS[d.stage] || '#F1F5F9',
+              color: STAGE_TEXT_COLORS[d.stage] || '#1E293B',
+            }}
+          >
+            {d.stage}
+          </button>
+        ))
+      ),
+    },
+    'Amount': {
+      key: 'amount',
+      header: 'Amount (₹)',
+      sortable: true,
+      className: 'text-slate-800 font-medium',
+      render: (d) => fmtINR(d.amount),
+    },
+    'Closing Date': {
+      key: 'closingDate',
+      header: 'Closing Date',
+      sortable: true,
+      render: (d) => fmtDate(d.closingDate),
+    },
+    'Probability (%)': {
+      key: 'probability',
+      header: 'Probability (%)',
+      sortable: true,
+      render: (d) => <Probability deal={d} />,
+    },
+    'Deal Owner': {
+      key: 'owner',
+      header: 'Deal Owner',
+      sortable: true,
+      render: (d) => <UserAvatar userId={d.ownerId} size={28} withName />,
+    },
+    'Account Name': {
+      key: 'account',
+      header: 'Account Name',
+      sortable: true,
+      render: (d) => <Link to={`/accounts?open=${d.accountId}`} className="text-primary hover:underline">{accountName(d.accountId)}</Link>,
+    },
+    'Contact Name': {
+      key: 'contact',
+      header: 'Contact Name',
+      sortable: true,
+      render: (d) => (d.contactId ? <Link to={`/contacts?open=${d.contactId}`} className="text-primary hover:underline">{contactName(d.contactId)}</Link> : <span className="text-slate-400">—</span>),
+    },
+    'Description': {
+      key: 'description',
+      header: 'Description',
+      sortable: true,
+      render: (d) => d.description || '—',
+    },
+    'Lead Source': {
+      key: 'source',
+      header: 'Lead Source',
+      sortable: true,
+      render: (d) => d.source || '—',
+    },
+    'Sales_ No': {
+      key: 'salesNo',
+      header: 'Sales_ No',
+      sortable: true,
+      render: (d) => d.salesNo || '—',
+    },
+    'Client Name': {
+      key: 'clientName',
+      header: 'Client Name',
+      sortable: true,
+      render: (d) => d.clientName || accountName(d.accountId) || '—',
+    },
+    'City': {
+      key: 'city',
+      header: 'City',
+      sortable: true,
+      render: (d) => d.city || '—',
+    },
+    'Forecast Category': {
+      key: 'forecastCategory',
+      header: 'Forecast Category',
+      sortable: true,
+      render: (d) => d.forecastCategory || '—',
+    },
+    'Expected Revenue': {
+      key: 'expectedRevenue',
+      header: 'Expected Revenue',
+      sortable: true,
+      render: (d) => d.expectedRevenue ? fmtINR(d.expectedRevenue) : '—',
+    },
+    'Job type': {
+      key: 'jobType',
+      header: 'Job type',
+      sortable: true,
+      render: (d) => d.jobType || '—',
+    },
+    'Purpose Of translation': {
+      key: 'purposeOfTranslation',
+      header: 'Purpose Of translation',
+      sortable: true,
+      render: (d) => d.purposeOfTranslation || '—',
+    },
+    'Delivery type': {
+      key: 'deliveryType',
+      header: 'Delivery type',
+      sortable: true,
+      render: (d) => d.deliveryType || '—',
+    },
+    'Submission Status': {
+      key: 'submissionStatus',
+      header: 'Submission Status',
+      sortable: true,
+      render: (d) => d.submissionStatus || '—',
+    },
+    'Est_NO': {
+      key: 'estNo',
+      header: 'Est_NO',
+      sortable: true,
+      render: (d) => d.estNo || '—',
+    },
+    'EST Ready': {
+      key: 'estReady',
+      header: 'EST Ready',
+      sortable: true,
+      render: (d) => d.estReady || '—',
+    },
+    'Mobile No': {
+      key: 'mobileNo',
+      header: 'Mobile No',
+      sortable: true,
+      render: (d) => d.mobileNo || d.mobile || '—',
+    },
+  }), [accountName, contactName, userName, contactsById]);
 
   const columns = useMemo(() => {
-    const cols = visibleColumns.map(c => ({
-      ...(allColumnsDef[c] || { key: c, header: c, sortable: false, render: () => <span className="text-ink-400">—</span> }),
-      colName: c
-    }));
+    const cols = visibleColumns.map(c => {
+      if (allColumnsDef[c]) {
+        return { ...allColumnsDef[c], colName: c };
+      }
+      const fieldKey = c.toLowerCase().replace(/[^a-zA-Z0-9]/g, '');
+      return {
+        key: c,
+        colName: c,
+        header: c,
+        sortable: false,
+        render: (d) => {
+          const val = d[c] ?? d[fieldKey];
+          return val !== undefined && val !== null && val !== '' ? String(val) : '—';
+        }
+      };
+    });
     cols.forEach(c => {
       if (!wrapText && !c.className?.includes('whitespace-nowrap')) c.className = (c.className ? c.className + ' ' : '') + 'whitespace-nowrap';
     });
@@ -711,7 +1491,12 @@ export default function Deals() {
       setFilterConfig(prev => { const p = { ...prev }; delete p[field]; return p; });
     } else {
       next.add(field);
-      setFilterConfig(prev => ({ ...prev, [field]: { op: FILTER_TYPES[getFieldType(field)][0], val: '' } }));
+      setFilterConfig(prev => ({
+        ...prev,
+        [field]: SYSTEM_FILTERS.includes(field)
+          ? getDefaultSystemFilterConfig(field)
+          : { op: FILTER_TYPES[getFieldType(field)][0], val: '' }
+      }));
     }
     setSelectedFields(next);
   };
@@ -728,36 +1513,48 @@ export default function Deals() {
         {matches.map(field => {
           const checked = selectedFields.has(field);
           const conf = filterConfig[field];
+          const isSystem = SYSTEM_FILTERS.includes(field);
           const type = getFieldType(field);
           const ops = FILTER_TYPES[type];
+          const slug = field.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
           return (
-            <div key={field} className="space-y-1.5">
+            <div key={field} id={`filter-field-${slug}`} className="space-y-1.5 p-1 rounded-md transition-colors">
               <label className="flex items-start gap-2.5 text-[13.5px] text-ink-600 cursor-pointer leading-snug">
                 <input type="checkbox" className="cb mt-0.5" checked={checked} onChange={() => toggleField(field)} />
                 {field}
               </label>
               {checked && conf && (
-                <div className="pl-[26px] space-y-1.5 mt-1 text-[13px]">
-                  <select className="w-full h-8 px-2 border border-line rounded-md bg-white" value={conf.op} onChange={(e) => setConfig(field, 'op', e.target.value)}>
-                    {ops.map(o => <option key={o} value={o}>{o}</option>)}
-                  </select>
-                  {type === 'Dropdown' ? (
-                    <select className="w-full h-8 px-2 border border-line rounded-md bg-white" value={conf.val} onChange={(e) => setConfig(field, 'val', e.target.value)}>
-                      <option value="">Select...</option>
-                      {(filterOptionsContext[field] || []).map(o => <option key={o.value || o} value={o.value || o}>{o.label || o}</option>)}
+                isSystem ? (
+                  <div className="pl-[26px] mt-1.5">
+                    <SystemFilterControls
+                      field={field}
+                      conf={conf}
+                      onChange={(newConf) => setFilterConfig(prev => ({ ...prev, [field]: newConf }))}
+                    />
+                  </div>
+                ) : (
+                  <div className="pl-[26px] space-y-1.5 mt-1 text-[13px]">
+                    <select className="w-full h-8 px-2 border border-line rounded-md bg-white" value={conf.op} onChange={(e) => setConfig(field, 'op', e.target.value)}>
+                      {ops.map(o => <option key={o} value={o}>{o}</option>)}
                     </select>
-                  ) : type === 'Date' ? (
-                    <>
-                      <input type="date" className="w-full h-8 px-2 border border-line rounded-md" value={conf.val} onChange={(e) => setConfig(field, 'val', e.target.value)} />
-                      {conf.op === 'Between' && <input type="date" className="w-full h-8 px-2 border border-line rounded-md mt-1" value={conf.val2 || ''} onChange={(e) => setConfig(field, 'val2', e.target.value)} />}
-                    </>
-                  ) : (
-                    <>
-                      {conf.op !== 'Is Empty' && <input type={type === 'Number' ? 'number' : 'text'} className="w-full h-8 px-2 border border-line rounded-md" value={conf.val} onChange={(e) => setConfig(field, 'val', e.target.value)} />}
-                      {conf.op === 'Between' && type === 'Number' && <input type="number" className="w-full h-8 px-2 border border-line rounded-md mt-1" value={conf.val2 || ''} onChange={(e) => setConfig(field, 'val2', e.target.value)} />}
-                    </>
-                  )}
-                </div>
+                    {type === 'Dropdown' ? (
+                      <select className="w-full h-8 px-2 border border-line rounded-md bg-white" value={conf.val} onChange={(e) => setConfig(field, 'val', e.target.value)}>
+                        <option value="">Select...</option>
+                        {(filterOptionsContext[field] || []).map(o => <option key={o.value || o} value={o.value || o}>{o.label || o}</option>)}
+                      </select>
+                    ) : type === 'Date' ? (
+                      <>
+                        <input type="date" className="w-full h-8 px-2 border border-line rounded-md" value={conf.val} onChange={(e) => setConfig(field, 'val', e.target.value)} />
+                        {conf.op === 'Between' && <input type="date" className="w-full h-8 px-2 border border-line rounded-md mt-1" value={conf.val2 || ''} onChange={(e) => setConfig(field, 'val2', e.target.value)} />}
+                      </>
+                    ) : (
+                      <>
+                        {conf.op !== 'Is Empty' && <input type={type === 'Number' ? 'number' : 'text'} className="w-full h-8 px-2 border border-line rounded-md" value={conf.val} onChange={(e) => setConfig(field, 'val', e.target.value)} />}
+                        {conf.op === 'Between' && type === 'Number' && <input type="number" className="w-full h-8 px-2 border border-line rounded-md mt-1" value={conf.val2 || ''} onChange={(e) => setConfig(field, 'val2', e.target.value)} />}
+                      </>
+                    )}
+                  </div>
+                )
               )}
             </div>
           );
@@ -767,6 +1564,14 @@ export default function Deals() {
   };
 
   const hasConfig = Object.keys(filterConfig).length > 0;
+  const hasActiveFilter = useMemo(() => {
+    const hasAny = (cfg) => Object.entries(cfg).some(([k, v]) => {
+      if (!v) return false;
+      if (SYSTEM_FILTERS.includes(k)) return true;
+      return v.val !== '' || v.op === 'Is Empty';
+    });
+    return Boolean(hasAny(appliedFilters) || hasAny(filterConfig));
+  }, [appliedFilters, filterConfig]);
 
   return (
     <div>
@@ -863,6 +1668,8 @@ export default function Deals() {
           sidebarToggle: { isOpen: filtersOpen, onToggle: () => setFiltersOpen((o) => !o) },
           filterActive: filtersOpen,
           onFilter: () => setFiltersOpen((o) => !o),
+          hasActiveFilter,
+          onSaveFilter: () => setSaveFilterModalOpen(true),
           labeled: true,
           sortOptions: [
             { key: 'name', label: 'Deal Name' },
@@ -980,14 +1787,89 @@ export default function Deals() {
 
             <div className="flex-1 overflow-y-auto thin-scroll px-3.5 pb-4">
               <details className="group mb-2" open={!filterSearch}>
-                <summary className="py-2.5 text-[14px] font-semibold text-ink cursor-pointer select-none flex items-center gap-1 -ml-1">
-                  <ChevronDown size={16} className="group-open:rotate-180 transition-transform -rotate-90" />
-                  Saved Filters <span className="ml-1 text-[11px] bg-line text-ink-600 px-1.5 py-0.5 rounded-sm">5</span>
+                <summary className="py-2.5 text-[14px] font-semibold text-ink cursor-pointer select-none flex items-center justify-between -ml-1">
+                  <div className="flex items-center gap-1">
+                    <ChevronDown size={16} className="group-open:rotate-180 transition-transform -rotate-90" />
+                    Saved Filters
+                  </div>
+                  <span className="text-[11px] font-medium bg-line text-ink-600 px-2 py-0.5 rounded-full" title="Saved presets count">
+                    {savedFilters.length} / {MAX_SAVED_FILTERS} Saved Filters
+                  </span>
                 </summary>
-                <div className="pl-5 pb-4 space-y-3 text-[13.5px] text-ink-600">
-                  <div className="cursor-pointer hover:text-primary truncate">My Open Deals</div>
-                  <div className="cursor-pointer hover:text-primary truncate">Closing This Month</div>
-                  <button className="text-primary hover:underline mt-1 text-[12.5px]">+ Save Current Filter</button>
+                <div className="pl-4 pb-3 space-y-1.5 text-[13px] text-ink-600">
+                  {savedFilters.length === 0 ? (
+                    <div className="text-[12.5px] text-ink-400 py-1 pl-1">No saved filters yet</div>
+                  ) : (
+                    savedFilters.map((sf) => {
+                      const isActive = activeSavedFilterId === sf.id;
+                      return (
+                        <div
+                          key={sf.id}
+                          className={`group/sf flex items-center justify-between py-1 px-2 rounded-md transition-colors ${
+                            isActive ? 'bg-primary-50 text-primary font-semibold' : 'hover:bg-page'
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => handleApplySavedFilter(sf)}
+                            className="truncate text-left flex-1 hover:text-primary"
+                            title={`Apply preset "${sf.name}"`}
+                          >
+                            {sf.name}
+                          </button>
+                          <div className="flex items-center gap-1 opacity-70 group-hover/sf:opacity-100 ml-1">
+                            {isActive && hasActiveFilter && (
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateSavedFilter(sf.id)}
+                                className="p-1 hover:text-primary text-ink-400"
+                                title="Update this preset with current conditions"
+                              >
+                                <Check size={13} />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFilterToRename(sf);
+                                setRenameFilterModalOpen(true);
+                              }}
+                              className="p-1 hover:text-primary text-ink-400"
+                              title="Rename filter"
+                            >
+                              <Edit2 size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setFilterToDelete(sf)}
+                              className="p-1 hover:text-red-500 text-ink-400"
+                              title="Delete filter"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+
+                  {hasActiveFilter && (
+                    <div className="pt-1.5 pl-1">
+                      {savedFilters.length < MAX_SAVED_FILTERS ? (
+                        <button
+                          type="button"
+                          onClick={() => setSaveFilterModalOpen(true)}
+                          className="text-primary hover:underline text-[12.5px] font-medium flex items-center gap-1"
+                        >
+                          <Plus size={13} /> Save Current Filter
+                        </button>
+                      ) : (
+                        <span className="text-[11.5px] text-red-500 block font-medium">
+                          Maximum 10 saved filters allowed.
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </details>
 
@@ -1025,9 +1907,31 @@ export default function Deals() {
             </div>
 
             {hasConfig && (
-              <div className="px-3.5 py-3 border-t border-line bg-page flex gap-2">
-                <button onClick={applyFilters} className="btn-primary flex-1 h-8 text-[13px]">Apply Filter</button>
-                <button onClick={() => { setFilterConfig({}); setSelectedFields(new Set()); setAppliedFilters({}); }} className="btn-secondary flex-1 h-8 text-[13px]">Clear Filter</button>
+              <div className="px-3.5 py-3 border-t border-line bg-page flex flex-col gap-2">
+                <div className="flex gap-2">
+                  <button onClick={applyFilters} className="btn-primary flex-1 h-8 text-[13px]">Apply Filter</button>
+                  <button onClick={() => { setFilterConfig({}); setSelectedFields(new Set()); setAppliedFilters({}); setActiveSavedFilterId(null); }} className="btn-secondary flex-1 h-8 text-[13px]">Clear Filter</button>
+                </div>
+                {hasActiveFilter && (
+                  <div className="space-y-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (savedFilters.length >= MAX_SAVED_FILTERS) return;
+                        setSaveFilterModalOpen(true);
+                      }}
+                      disabled={savedFilters.length >= MAX_SAVED_FILTERS}
+                      className="w-full h-8 text-[13px] font-medium border border-primary text-primary hover:bg-primary-50 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                    >
+                      <Bookmark size={14} /> Save Filter
+                    </button>
+                    {savedFilters.length >= MAX_SAVED_FILTERS && (
+                      <p className="text-[11.5px] text-red-500 text-center font-medium">
+                        Maximum 10 saved filters allowed.
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </aside>
@@ -1079,33 +1983,30 @@ export default function Deals() {
               <BulkButton icon={Trash2} danger onClick={() => setConfirm({ ids: selectedIds, label: `${selectedIds.length} deals` })}>Delete</BulkButton>
             </BulkBar>
             {/* 1. List View */}
-            {layout === 'list' && <DataTable columns={columns} rows={table.pageRows} table={table} loading={refreshing} dense={dense} minWidth={1290} columnMenu={columnMenuConfig}
+            {layout === 'list' && <DataTable columns={columns} rows={table.pageRows} table={table} loading={refreshing} dense={dense} minWidth={1290} columnMenu={columnMenuConfig} viewMode={viewMode}
               emptyAction={<button className="btn-primary mt-2 h-9" onClick={() => setForm({ mode: 'create', record: blank() })}><Plus size={16} />Create Deal</button>}
               headerExtra={
                 <th className="th w-[44px] text-center p-0">
-                  <Dropdown width={180} align="right" trigger={
-                    <button type="button" className="h-7 w-7 inline-flex items-center justify-center rounded border border-line bg-white hover:bg-page mt-1">
-                      <Settings2 size={15} className="text-ink-600" />
-                    </button>
-                  }>
-                    {(close) => (
-                      <div className="py-1">
-                        <MenuItem close={close} onClick={() => setManageColsOpen(true)}>Manage Columns</MenuItem>
-                        <MenuItem close={close} onClick={() => { localStorage.removeItem('deals_cols'); localStorage.removeItem('deals_pinned_cols'); setPinnedColumns([]); setVisibleColumns(['Deal Name', 'Account Name', 'Contact Name', 'Stage', 'Amount', 'Closing Date', 'Probability (%)', 'Deal Owner', 'Created Time']); }}>Reset Column Size</MenuItem>
-                        <MenuDivider />
-                        <div className="px-3 py-1.5 text-[13px] font-medium text-ink-500 flex justify-between">Records Per Page <span className="text-ink-600 font-semibold">{pageSize} ▸</span></div>
-                        <div className="pl-4 pr-2 pb-1 space-y-0.5">
-                           {[10, 25, 50, 100, 200].map(sz => <MenuItem key={sz} close={close} active={pageSize === sz} onClick={() => { setPageSize(sz); table.setPage(1); }}>{sz}</MenuItem>)}
-                        </div>
-                        <MenuDivider />
-                        <div className="px-3 py-1.5 text-[13px] font-medium text-ink-500 flex justify-between">View Mode <span className="text-ink-600 font-semibold">{wrapText ? 'Wrap Text' : 'No Wrap'} ▸</span></div>
-                        <div className="pl-4 pr-2 pb-1 space-y-0.5">
-                           <MenuItem close={close} active={wrapText} onClick={() => setWrapText(true)}>Wrap Text</MenuItem>
-                           <MenuItem close={close} active={!wrapText} onClick={() => setWrapText(false)}>No Wrap</MenuItem>
-                        </div>
-                      </div>
-                    )}
-                  </Dropdown>
+                  <ViewSettingsMenu
+                    onManageColumns={() => setManageColsOpen(true)}
+                    onResetColumnSize={() => {
+                      localStorage.removeItem('deals_pinned_cols');
+                      setPinnedColumns([]);
+                    }}
+                    hasCustomColumnSize={pinnedColumns.length > 0}
+                    pageSize={pageSize}
+                    onPageSizeChange={(sz) => {
+                      setPageSize(sz);
+                      localStorage.setItem('deals_page_size', sz);
+                      table.setPage(1);
+                    }}
+                    viewMode={viewMode}
+                    onViewModeChange={(mode) => {
+                      setViewMode(mode);
+                      setWrapText(mode === 'wrap');
+                      localStorage.setItem('deals_view_mode', mode);
+                    }}
+                  />
                 </th>
               }
             />}
@@ -1129,32 +2030,42 @@ export default function Deals() {
 
             {/* 3. Grid View */}
             {layout === 'grid' && (
-              <div className="p-3">
-                <GridView
+              <div>
+                <SpreadsheetGridView
+                  columns={columns}
                   rows={table.pageRows}
-                  onCardClick={(d) => openDeal(d.id)}
-                  renderCard={(d) => (
-                    <div>
-                      <div className="flex items-start justify-between gap-2 mb-1.5">
-                        <h4 className="text-[14px] font-bold text-ink hover:text-primary truncate" title={d.name}>
-                          {d.name}
-                        </h4>
-                        <span className="text-[13.5px] font-extrabold text-ink shrink-0">
-                          {fmtINR(d.amount)}
-                        </span>
-                      </div>
-                      <div className="text-[12px] text-ink-500 mb-2 truncate">
-                        {accountName(d.accountId) || 'No Account'}{d.contactId ? ` · ${contactName(d.contactId)}` : ''}
-                      </div>
-                      <div className="flex items-center justify-between mt-2 pt-2 border-t border-line text-[11.5px]">
-                        <div className="flex items-center gap-1.5 truncate">
-                          <UserAvatar userId={d.ownerId} size={20} />
-                          <span className="truncate">{userName(d.ownerId)}</span>
-                        </div>
-                        <StatusBadge status={d.stage} tone={badgeTone(d.stage)} />
-                      </div>
-                    </div>
-                  )}
+                  table={table}
+                  loading={refreshing}
+                  minWidth={1300}
+                  columnMenu={columnMenuConfig}
+                  viewMode={viewMode}
+                  onCellEdit={handleInlineCellEdit}
+                  emptyAction={<button className="btn-primary mt-2 h-9" onClick={() => setForm({ mode: 'create', record: blank() })}><Plus size={16} />Create Deal</button>}
+                  headerExtra={
+                    <th className="w-[44px] min-w-[44px] max-w-[44px] text-center p-0 border-b border-[#CBD5E1] bg-[#F4F6F9]">
+                      <ViewSettingsMenu
+                        onManageColumns={() => setManageColsOpen(true)}
+                        onResetColumnSize={() => {
+                          localStorage.removeItem('deals_cols');
+                          localStorage.removeItem('deals_pinned_cols');
+                          setPinnedColumns([]);
+                          setVisibleColumns(['Created Time', 'Categories', 'Deal Name', 'Mobile', 'Remarks', 'Lead Manager 1', 'Stage', 'Deal Owner', 'Amount', 'Closing Date']);
+                        }}
+                        pageSize={pageSize}
+                        onPageSizeChange={(newSize) => {
+                          setPageSize(newSize);
+                          table.setPageSize(newSize);
+                          try { localStorage.setItem('deals_page_size', String(newSize)); } catch (e) {}
+                        }}
+                        viewMode={viewMode}
+                        onViewModeChange={(newMode) => {
+                          setViewMode(newMode);
+                          setWrapText(newMode === 'wrap');
+                          try { localStorage.setItem('deals_view_mode', newMode); } catch (e) {}
+                        }}
+                      />
+                    </th>
+                  }
                 />
               </div>
             )}
@@ -1256,33 +2167,30 @@ export default function Deals() {
 
             {/* 9. Table View */}
             {layout === 'table' && (
-              <DataTable columns={columns} rows={table.pageRows} table={table} loading={refreshing} dense={true} minWidth={1290} columnMenu={columnMenuConfig}
+              <DataTable columns={columns} rows={table.pageRows} table={table} loading={refreshing} dense={true} minWidth={1290} columnMenu={columnMenuConfig} viewMode={viewMode}
                 emptyAction={<button className="btn-primary mt-2 h-9" onClick={() => setForm({ mode: 'create', record: blank() })}><Plus size={16} />Create Deal</button>}
                 headerExtra={
                   <th className="th w-[44px] text-center p-0">
-                    <Dropdown width={180} align="right" trigger={
-                      <button type="button" className="h-7 w-7 inline-flex items-center justify-center rounded border border-line bg-white hover:bg-page mt-1">
-                        <Settings2 size={15} className="text-ink-600" />
-                      </button>
-                    }>
-                      {(close) => (
-                        <div className="py-1">
-                          <MenuItem close={close} onClick={() => setManageColsOpen(true)}>Manage Columns</MenuItem>
-                          <MenuItem close={close} onClick={() => { localStorage.removeItem('deals_cols'); localStorage.removeItem('deals_pinned_cols'); setPinnedColumns([]); setVisibleColumns(['Deal Name', 'Account Name', 'Contact Name', 'Stage', 'Amount', 'Closing Date', 'Probability (%)', 'Deal Owner', 'Created Time']); }}>Reset Column Size</MenuItem>
-                          <MenuDivider />
-                          <div className="px-3 py-1.5 text-[13px] font-medium text-ink-500 flex justify-between">Records Per Page <span className="text-ink-600 font-semibold">{pageSize} ▸</span></div>
-                          <div className="pl-4 pr-2 pb-1 space-y-0.5">
-                             {[10, 25, 50, 100, 200].map(sz => <MenuItem key={sz} close={close} active={pageSize === sz} onClick={() => { setPageSize(sz); table.setPage(1); }}>{sz}</MenuItem>)}
-                          </div>
-                          <MenuDivider />
-                          <div className="px-3 py-1.5 text-[13px] font-medium text-ink-500 flex justify-between">View Mode <span className="text-ink-600 font-semibold">{wrapText ? 'Wrap Text' : 'No Wrap'} ▸</span></div>
-                          <div className="pl-4 pr-2 pb-1 space-y-0.5">
-                             <MenuItem close={close} active={wrapText} onClick={() => setWrapText(true)}>Wrap Text</MenuItem>
-                             <MenuItem close={close} active={!wrapText} onClick={() => setWrapText(false)}>No Wrap</MenuItem>
-                          </div>
-                        </div>
-                      )}
-                    </Dropdown>
+                    <ViewSettingsMenu
+                      onManageColumns={() => setManageColsOpen(true)}
+                      onResetColumnSize={() => {
+                        localStorage.removeItem('deals_pinned_cols');
+                        setPinnedColumns([]);
+                      }}
+                      hasCustomColumnSize={pinnedColumns.length > 0}
+                      pageSize={pageSize}
+                      onPageSizeChange={(sz) => {
+                        setPageSize(sz);
+                        localStorage.setItem('deals_page_size', sz);
+                        table.setPage(1);
+                      }}
+                      viewMode={viewMode}
+                      onViewModeChange={(mode) => {
+                        setViewMode(mode);
+                        setWrapText(mode === 'wrap');
+                        localStorage.setItem('deals_view_mode', mode);
+                      }}
+                    />
                   </th>
                 }
               />
@@ -1348,6 +2256,27 @@ export default function Deals() {
         onSubmit={({ value }) => { selectedIds.forEach((id) => { const d = deals.find((x) => x.id === id); updateRecord('deals', id, bulk === 'owner' ? { ownerId: value } : stagePatch(d, value)); }); setBulk(null); table.clearSelection(); }} />
       <ConfirmDialog open={!!confirm} onClose={() => setConfirm(null)} title="Delete deals?" message={confirm ? `Delete ${confirm.label}? Pipeline totals and stage reports update immediately.` : ''}
         onConfirm={() => { deleteRecords('deals', confirm.ids); table.clearSelection(); setViewing(null); }} />
+      <SaveFilterModal
+        open={saveFilterModalOpen}
+        onClose={() => setSaveFilterModalOpen(false)}
+        onSave={handleSaveNewFilter}
+        currentConfig={filterConfig}
+        count={savedFilters.length}
+        maxCount={MAX_SAVED_FILTERS}
+      />
+      <RenameFilterModal
+        open={renameFilterModalOpen}
+        onClose={() => { setRenameFilterModalOpen(false); setFilterToRename(null); }}
+        filter={filterToRename}
+        onRename={handleRenameSavedFilter}
+      />
+      <ConfirmDialog
+        open={!!filterToDelete}
+        onClose={() => setFilterToDelete(null)}
+        title="Delete Saved Filter?"
+        message={filterToDelete ? `Are you sure you want to delete "${filterToDelete.name}"? This action cannot be undone.` : ''}
+        onConfirm={() => handleDeleteSavedFilter(filterToDelete.id)}
+      />
     </div>
   );
 }

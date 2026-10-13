@@ -233,17 +233,23 @@ export const TYPE_OPTIONS = [
   'Renewal'
 ];
 
-// 10. Forecast Category
+// 10. Forecast Category (Matches Screenshot 4)
 export const FORECAST_CATEGORY_OPTIONS = [
   'Pipeline',
   'Best Case',
-  'Commit',
-  'Closed',
-  'Omitted'
+  'Committed'
 ];
+
+export const FORECAST_CATEGORY_COLORS = {
+  'Pipeline': '#0284C7',
+  'Best Case': '#F87171',
+  'Committed': '#D946EF',
+  'Commit': '#D946EF'
+};
 
 // 11. Categories (Deal Category Selection)
 export const CATEGORIES_OPTIONS = [
+  'translations',
   'Translation',
   'Interpretation',
   'Localization',
@@ -251,6 +257,20 @@ export const CATEGORIES_OPTIONS = [
   'Content Writing',
   'Language Training',
   'Other'
+];
+
+// 11b. Territories (Searchable inline selection)
+export const TERRITORY_OPTIONS = [
+  '-None-',
+  'India',
+  'North America',
+  'Europe',
+  'Asia Pacific',
+  'Middle East',
+  'Australia',
+  'Latin America',
+  'South East Asia',
+  'United Kingdom'
 ];
 
 // 12. Category (Business Market Category)
@@ -280,4 +300,51 @@ export const EST_READY_OPTIONS = [
   'Ready',
   'Not Applicable'
 ];
+
+// 15. Standard Deal Tags matching Zoho CRM reference screenshots
+export const DEFAULT_DEAL_TAGS = [
+  { id: 'tag-1', name: 'No Requirements', color: '#EA580C', textColor: '#FFFFFF' }, // Orange
+  { id: 'tag-2', name: 'Junk', color: '#DC2626', textColor: '#FFFFFF' }, // Red/Orange
+  { id: 'tag-3', name: 'Deal Done', color: '#16A34A', textColor: '#FFFFFF' }, // Green
+  { id: 'tag-4', name: 'Not contactable', color: '#881337', textColor: '#FFFFFF' }, // Maroon
+  { id: 'tag-5', name: 'followup', color: '#EAB308', textColor: '#1F2937' }, // Yellow (dark text)
+  { id: 'tag-6', name: 'Estimation Sent', color: '#DB2777', textColor: '#FFFFFF' }, // Pink
+  { id: 'tag-7', name: 'Waiting for Estimation', color: '#6366F1', textColor: '#FFFFFF' }, // Lavender Blue
+  { id: 'tag-8', name: 'Estimation Ready', color: '#EC4899', textColor: '#FFFFFF' }, // Pink
+  { id: 'tag-9', name: 'Invoice Need', color: '#0D9488', textColor: '#FFFFFF' }, // Teal
+  { id: 'tag-10', name: 'Invoice Sent', color: '#2563EB', textColor: '#FFFFFF' }, // Blue
+  { id: 'tag-11', name: 'Whatsapp Followups', color: '#16A34A', textColor: '#FFFFFF' }, // Bright Green
+  { id: 'tag-12', name: 'Closed Lost', color: '#DC2626', textColor: '#FFFFFF' }, // Red
+  { id: 'tag-13', name: 'Future Requirements', color: '#C2410C', textColor: '#FFFFFF' }, // Dark Orange
+  { id: 'tag-14', name: 'Ideal Deal', color: '#65A30D', textColor: '#FFFFFF' }, // Olive Green
+  { id: 'tag-15', name: 'Duplicate', color: '#831843', textColor: '#FFFFFF' }, // Maroon
+  { id: 'tag-16', name: 'Already Job Completed', color: '#0284C7', textColor: '#FFFFFF' }, // Cyan Blue
+  { id: 'tag-17', name: 'Foreign Number', color: '#10B981', textColor: '#FFFFFF' }, // Light Green
+  { id: 'tag-18', name: 'Block List', color: '#B91C1C', textColor: '#FFFFFF' }, // Red
+];
+
+// 16. Organize Potentials Details - 20 Canonical Sections matching reference screenshot
+export const DEFAULT_ORGANIZE_SECTIONS = [
+  { id: 'section-notes', label: 'Notes', visible: true },
+  { id: 'section-contact-roles', label: 'Contact Roles', visible: true },
+  { id: 'section-attachments', label: 'Attachments', visible: true },
+  { id: 'section-emails', label: 'Emails', visible: true },
+  { id: 'section-stage-history', label: 'Stage History', visible: true },
+  { id: 'section-zoho-projects', label: 'Zoho Projects', visible: true },
+  { id: 'section-open-activities', label: 'Open Activities', visible: true },
+  { id: 'section-closed-activities', label: 'Closed Activities', visible: true },
+  { id: 'section-zoho-finance', label: 'Zoho Finance', visible: true },
+  { id: 'section-zoho-desk', label: 'Zoho Desk', visible: false },
+  { id: 'section-competitors', label: 'Competitors', visible: false },
+  { id: 'section-products', label: 'Products', visible: false },
+  { id: 'section-zoho-survey', label: 'Zoho Survey', visible: false },
+  { id: 'section-zoho-sign', label: 'ZohoSign Documents', visible: false },
+  { id: 'section-cadences', label: 'Cadences', visible: false },
+  { id: 'section-zoho-expense', label: 'Zoho Expense', visible: false },
+  { id: 'section-cases', label: 'Cases', visible: false },
+  { id: 'section-connected-records', label: 'Connected Records', visible: false },
+  { id: 'section-whatsapp', label: 'Whatsapp', visible: false },
+  { id: 'section-products-1', label: 'Products1', visible: false },
+];
+
 

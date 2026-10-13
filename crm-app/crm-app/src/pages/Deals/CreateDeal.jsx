@@ -355,9 +355,10 @@ export default function CreateDeal({ record = {}, mode = 'create', onSave, onCan
     contactId: record.contactId || '',
     stage: record.stage || 'Need Deal Estimation',
     closingDate: record.closingDate || '',
-    leadManager1: record.leadManager1 || 'u2',
+    leadManager1: record.leadManager1 || 'u7',
     salesNo: record.salesNo || '',
     categories: record.categories || 'Translation',
+    createdTime: record.createdTime || new Date().toISOString(),
     approvalStatus: record.approvalStatus || 'Draft',
     remarks: record.remarks || '',
     submissionStatus: record.submissionStatus || '-None-',
@@ -524,16 +525,29 @@ export default function CreateDeal({ record = {}, mode = 'create', onSave, onCan
         }
       }
 
-      // Field Dependency: Contact selection can auto-populate Account if empty
+      // Field Dependency: Contact selection can auto-populate Account & Mobile if empty
       if (field === 'contactId' && value) {
         const contactObj = contacts.find((c) => c.id === value);
-        if (contactObj && contactObj.accountId && !next.accountId) {
-          next.accountId = contactObj.accountId;
-          const acc = accounts.find((a) => a.id === contactObj.accountId);
-          if (acc) {
-            next.clientName = acc.name;
+        if (contactObj) {
+          if (contactObj.phone && !next.mobile && !next.mobileNo) {
+            next.mobile = contactObj.phone;
+            next.mobileNo = contactObj.phone;
+          }
+          if (contactObj.accountId && !next.accountId) {
+            next.accountId = contactObj.accountId;
+            const acc = accounts.find((a) => a.id === contactObj.accountId);
+            if (acc) {
+              next.clientName = acc.name;
+            }
           }
         }
+      }
+
+      if (field === 'mobile') {
+        next.mobileNo = value;
+      }
+      if (field === 'mobileNo') {
+        next.mobile = value;
       }
 
       return next;
@@ -574,6 +588,9 @@ export default function CreateDeal({ record = {}, mode = 'create', onSave, onCan
     if (!data.closingDate) errs.closingDate = 'Closing Date is required';
     if (!data.accountId) errs.accountId = 'Account Name is required';
     if (!data.amount || Number(data.amount) <= 0) errs.amount = 'Valid Deal Amount is required';
+    if (data.probability !== '' && data.probability !== undefined && (Number(data.probability) < 0 || Number(data.probability) > 100)) {
+      errs.probability = 'Probability must be between 0 and 100%';
+    }
 
     setErrors(errs);
     if (Object.keys(errs).length > 0) {

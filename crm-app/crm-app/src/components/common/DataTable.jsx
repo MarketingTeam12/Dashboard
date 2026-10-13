@@ -17,7 +17,7 @@ function defaultDetectType(col) {
 export default function DataTable({
   columns, rows, table, selectable = true, showIndex = true, loading, dense, onRowClick,
   emptyTitle = 'No records match these filters', emptyHint = 'Clear the filters or create a new record.', emptyAction, minWidth = 1100, headerExtra,
-  columnMenu = null,
+  columnMenu = null, viewMode = 'wrap',
 }) {
   const allChecked = rows.length > 0 && rows.every((r) => table.selected.has(r.id));
   const someChecked = rows.some((r) => table.selected.has(r.id));
@@ -156,6 +156,7 @@ export default function DataTable({
                         onTogglePin={columnMenu.onTogglePin}
                         onHideColumn={columnMenu.onHideColumn}
                         onFilterColumn={columnMenu.onFilterColumn}
+                        onOpenFilterSidebar={columnMenu.onOpenFilterSidebar}
                         activeFilter={columnMenu.appliedFilters?.[c.key] || columnMenu.appliedFilters?.[c.header] || (c.colName && columnMenu.appliedFilters?.[c.colName])}
                         filterOptions={columnMenu.filterOptions?.[c.key] || columnMenu.filterOptions?.[c.header] || (c.colName && columnMenu.filterOptions?.[c.colName])}
                         fieldType={columnMenu.getFieldType ? columnMenu.getFieldType(c.key || c.header) : defaultDetectType(c)}
@@ -210,13 +211,20 @@ export default function DataTable({
                   ? 'shadow-[3px_0_6px_-2px_rgba(0,0,0,0.12)] border-r border-slate-300'
                   : '';
 
+                const modeCls = viewMode === 'clip'
+                  ? 'whitespace-nowrap overflow-hidden text-ellipsis max-w-[280px]'
+                  : 'whitespace-normal break-words';
+                const cellContent = c.render ? c.render(row, i) : row[c.key];
+                const rawVal = typeof row[c.key] === 'string' ? row[c.key] : undefined;
+
                 return (
                   <td
                     key={c.key}
-                    className={`td ${alignCls(c.align)} ${c.className || ''} ${pinnedBorder}`}
+                    title={viewMode === 'clip' && rawVal ? rawVal : undefined}
+                    className={`td ${alignCls(c.align)} ${c.className || ''} ${modeCls} ${pinnedBorder}`}
                     style={tdStyle}
                   >
-                    {c.render ? c.render(row, i) : row[c.key]}
+                    {cellContent}
                   </td>
                 );
               })}
