@@ -28,6 +28,7 @@ export default function ColumnHeaderMenu({
   onTogglePin,
   onHideColumn,
   onFilterColumn,
+  onOpenFilterSidebar,
   activeFilter = null,
   filterOptions = null,
   fieldType = 'Text'
@@ -170,7 +171,12 @@ export default function ColumnHeaderMenu({
 
   const handleOpenFilterView = (e) => {
     e.stopPropagation();
-    setView('filter');
+    if (onOpenFilterSidebar) {
+      onOpenFilterSidebar(column.key || column.header, column);
+      setIsOpen(false);
+    } else {
+      setView('filter');
+    }
   };
 
   const handleApplyFilter = (e) => {

@@ -14,12 +14,14 @@ function mulberry32(a) {
 export const SEED_VERSION = 4;
 
 export const USERS = [
-  { id: 'u1', name: 'Arun Kumar', role: 'Sales Manager', email: 'arun.kumar@crm.in', color: '#1262E0' },
-  { id: 'u2', name: 'Divya R', role: 'Account Executive', email: 'divya.r@crm.in', color: '#D9468F' },
-  { id: 'u3', name: 'Karthik S', role: 'Account Executive', email: 'karthik.s@crm.in', color: '#0E9F6E' },
-  { id: 'u4', name: 'Ravi Kumar', role: 'Sales Executive', email: 'ravi.kumar@crm.in', color: '#B45309' },
-  { id: 'u5', name: 'Sneha R', role: 'Sales Executive', email: 'sneha.r@crm.in', color: '#7C3AED' },
-  { id: 'u6', name: 'Mohan Raj', role: 'Inside Sales', email: 'mohan.raj@crm.in', color: '#0F766E' },
+  { id: 'u1', name: 'Arun Kumar', role: 'Sales Manager', email: 'arun.kumar@crm.in', mobile: '+91 98401 23456', phone: '044-24567891', color: '#1262E0' },
+  { id: 'u2', name: 'Divya R', role: 'Account Executive', email: 'divya.r@crm.in', mobile: '+91 98402 34567', phone: '044-24567892', color: '#D9468F' },
+  { id: 'u3', name: 'Karthik S', role: 'Account Executive', email: 'karthik.s@crm.in', mobile: '+91 98403 45678', phone: '044-24567893', color: '#0E9F6E' },
+  { id: 'u4', name: 'Ravi Kumar', role: 'Sales Executive', email: 'ravi.kumar@crm.in', mobile: '+91 98404 56789', phone: '044-24567894', color: '#B45309' },
+  { id: 'u5', name: 'Sneha R', role: 'Sales Executive', email: 'sneha.r@crm.in', mobile: '+91 98405 67890', phone: '044-24567895', color: '#7C3AED' },
+  { id: 'u6', name: 'Mohan Raj', role: 'Inside Sales', email: 'mohan.raj@crm.in', mobile: '+91 98406 78901', phone: '044-24567896', color: '#0F766E' },
+  { id: 'u7', name: 'Prasanna', role: 'Lead Manager', email: 'prasanna@crm.in', mobile: '+91 98407 89012', phone: '044-24567897', color: '#0284C7' },
+  { id: 'u-mkt', name: 'Marketing Department', role: 'Lead Generation & Inbound', email: 'marketing@crm.in', mobile: '+91 98400 11223', phone: '044-24567800', color: '#0284C7' },
 ];
 
 export const ACCOUNT_TYPES = ['Customer', 'Prospect', 'Partner', 'Vendor'];

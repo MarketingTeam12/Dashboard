@@ -4,6 +4,7 @@ import { useCRM } from "../../context/CRMContext";
 import { fmtDate, fmtTime, fmtDuration, fmtINR } from "../../utils/calculations";
 import { Link } from "react-router-dom";
 import SidebarToggleButton from "../../components/common/SidebarToggleButton";
+import TimelineHistoryView from "../../components/common/TimelineHistoryView";
 
 function EditableField({ label, value, type = "text", options = [], onSave, badgeClass, readOnly, linkTo, hasIcon }) {
   const [isEditing, setIsEditing] = useState(false);
@@ -491,18 +492,7 @@ export default function CallDetail({ id, onClose, onEdit, onDelete, onPrev, onNe
         )}
 
         {activeTab === "Timeline" && (
-          <div className="flex-1 p-6 overflow-y-auto bg-white">
-            <h2 className="text-[16px] font-bold mb-6">Timeline</h2>
-            <div className="relative border-l border-line ml-4 space-y-6">
-              <div className="relative pl-6">
-                <div className="absolute left-[-5px] top-1 w-2.5 h-2.5 rounded-full bg-primary ring-4 ring-white"></div>
-                <div className="text-[13px]">
-                  <span className="font-semibold">{userName(call.ownerId)}</span> logged the call.
-                </div>
-                <div className="text-[12px] text-ink-500 mt-0.5">{fmtDate(call.dateTime) || "Recently"}</div>
-              </div>
-            </div>
-          </div>
+          <TimelineHistoryView module="Calls" record={call} />
         )}
       </div>
     </div>
