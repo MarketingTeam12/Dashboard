@@ -251,6 +251,7 @@ export default function Contacts() {
           { label: 'Clear all filters', onClick: clearFilters },
         ]}
         toolbar={{
+          sidebarToggle: { isOpen: panelOpen, onToggle: () => setPanelOpen((o) => !o) },
           labeled: true, filterActive: panelOpen, onFilter: () => setPanelOpen((o) => !o),
           sortOptions: [{ key: 'name', label: 'Contact Name' }, { key: 'account', label: 'Account Name' }, { key: 'lifecycle', label: 'Lifecycle Stage' }, { key: 'lastContacted', label: 'Last Contacted' }, { key: 'createdOn', label: 'Created On' }],
           sort: table.sort, onSort: table.setSort, layouts: ['list', 'kanban', 'grid', 'chart'], layout, onLayout: setLayout,
@@ -268,8 +269,11 @@ export default function Contacts() {
       />
 
       <div className="flex gap-3 items-start">
-        {panelOpen && (
-          <aside className="card hidden md:block w-[204px] shrink-0 px-3.5 py-4 sticky top-[72px] max-h-[calc(100vh-86px)] overflow-y-auto thin-scroll">
+        <aside
+          className={`card hidden md:block shrink-0 px-3.5 py-4 sticky top-[72px] max-h-[calc(100vh-86px)] overflow-y-auto thin-scroll transition-all duration-300 ease-in-out ${
+            panelOpen ? 'w-[204px] opacity-100' : 'w-0 opacity-0 border-0 p-0 overflow-hidden -mr-3 pointer-events-none'
+          }`}
+        >
             <div className="flex items-center justify-between">
               <h2 className="text-[15px] font-semibold text-ink whitespace-nowrap">Filter Contacts by</h2>
             </div>
@@ -322,7 +326,6 @@ export default function Contacts() {
               </div>
             )}
           </aside>
-        )}
 
         <section className="card flex-1 min-w-0 overflow-hidden">
           <BulkBar count={selectedIds.length} onClear={table.clearSelection}>

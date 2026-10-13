@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { CalendarClock, CalendarPlus, ChevronDown, Clock3, Download, Eye, Pencil, Phone, PhoneCall, PhoneIncoming, PhoneMissed, PhoneOutgoing, Plus, Search, Trash2, UserCog, Settings2, Check, CheckCircle2 } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { CalendarClock, CalendarPlus, ChevronDown, Clock3, Columns2, Columns3, Download, LayoutDashboard, LayoutGrid, List, Phone, PhoneCall, PhoneIncoming, PhoneMissed, PhoneOutgoing, PieChart, Plus, Search, SlidersHorizontal, Table2, Trash2, UserCog, Settings2, Check, CheckCircle2 } from 'lucide-react';
 import { useCRM } from '../../context/CRMContext';
 import PageHeader from '../../components/common/PageHeader';
 import StatCard from '../../components/common/StatCard';
@@ -9,7 +9,6 @@ import Pagination from '../../components/common/Pagination';
 import useTable from '../../components/common/useTable';
 import StatusBadge, { badgeTone } from '../../components/common/StatusBadge';
 import { PersonAvatar, UserAvatar } from '../../components/common/Avatar';
-import ActionMenu from '../../components/common/ActionMenu';
 import FormModal from '../../components/common/RecordForm';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
 import { Drawer, DetailGrid, SectionTitle } from '../../components/common/Modal';
@@ -21,6 +20,23 @@ import { CALL_STATUSES, CALL_TYPES } from '../../data/seedData';
 import { fmtDate, fmtDuration, fmtTime, inRange, sumBy, trend } from '../../utils/calculations';
 import { exportCSV } from '../../utils/exportCSV';
 import CallDetail from './CallDetail';
+import CallsTileView from './CallsTileView';
+import CallsTimelineView from './CallsTimelineView';
+import CallsSplitView from './CallsSplitView';
+
+export const ALL_9_VIEWS = [
+  { key: 'list', label: 'List View', icon: List },
+  { key: 'kanban', label: 'Kanban View', icon: Columns3 },
+  { key: 'grid', label: 'Grid View', icon: LayoutGrid },
+  { key: 'chart', label: 'Chart View', icon: PieChart },
+  { key: 'timeline', label: 'Timeline View', icon: Clock3 },
+  { key: 'split', label: 'Split View', icon: Columns2 },
+  { key: 'custom_list', label: 'Custom List View', icon: SlidersHorizontal },
+  { key: 'tile', label: 'Tile View', icon: LayoutDashboard },
+  { key: 'table', label: 'Table View', icon: Table2 },
+];
+
+const DEFAULT_VISIBLE_VIEWS = ['list', 'kanban', 'grid', 'chart', 'timeline', 'split'];
 
 const DEFAULT_RANGE = { from: '2026-01-01', to: '2026-12-31' };
 const STATUS_COLORS = { Completed: '#12C26B', Missed: '#FF3344', Busy: '#FFBB28', Scheduled: '#2F7BF5' };
@@ -109,11 +125,77 @@ function CallTypeIcon({ type }) {
 }
 
 export default function Calls() {
+  const navigate = useNavigate();
   const { calls, contacts, users, baselines, accountName, contactName, userName, contactsById, createRecord, updateRecord, deleteRecords } = useCRM();
   const { refreshing, refresh } = useRefresh('Calls');
+  const [returnDealId, setReturnDealId] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('fromDeal') || sessionStorage.getItem('call_return_deal') || null;
+  });
   const [savedView, setSavedView] = useState('all');
-  const [layout, setLayout] = useState('list');
-  const [dense, setDense] = useState(false);
+
+  // Exactly 6 visible icons in toolbar
+  const [visibleViews, setVisibleViews] = useState(() => {
+    try {
+      const saved = localStorage.getItem('calls_visible_views');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (
+          Array.isArray(parsed) &&
+          parsed.length === 6 &&
+          parsed.every((k) => ALL_9_VIEWS.some((v) => v.key === k))
+        ) {
+          return parsed;
+        }
+      }
+    } catch (e) {}
+    return DEFAULT_VISIBLE_VIEWS;
+  });
+
+  const [layout, setLayoutState] = useState(() => {
+    const saved = localStorage.getItem('calls_layout');
+    if (saved && ALL_9_VIEWS.some((v) => v.key === saved)) {
+      return saved;
+    }
+    return 'list';
+  });
+
+  const setLayout = (l) => {
+    setLayoutState(l);
+    try {
+      localStorage.setItem('calls_layout', l);
+    } catch (e) {}
+  };
+
+  // The remaining 3 views kept in the dropdown
+  const dropdownViews = useMemo(() => {
+    return ALL_9_VIEWS.filter((v) => !visibleViews.includes(v.key));
+  }, [visibleViews]);
+
+  // Clicking a visible icon displays that view immediately
+  const handleSelectVisibleView = (key) => {
+    setLayout(key);
+  };
+
+  // Selecting a hidden view from the dropdown replaces the currently active visible icon.
+  // Moves the replaced view into the dropdown.
+  // Always maintains exactly 6 visible icons and 3 dropdown options.
+  const handleSelectDropdownView = (dropdownKey) => {
+    setVisibleViews((prevVisible) => {
+      const activeIndex = prevVisible.indexOf(layout);
+      const replaceIndex = activeIndex >= 0 ? activeIndex : 0;
+      const nextVisible = [...prevVisible];
+      nextVisible[replaceIndex] = dropdownKey;
+      try {
+        localStorage.setItem('calls_visible_views', JSON.stringify(nextVisible));
+      } catch (e) {}
+      return nextVisible;
+    });
+
+    setLayout(dropdownKey);
+  };
+
+  const dense = false;
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [search, setSearch] = useState('');
   const [range, setRange] = useState(DEFAULT_RANGE);
@@ -136,6 +218,42 @@ export default function Calls() {
     } catch (e) {}
     return ['Note Badge', 'Subject', 'Call Manager', 'Description', 'Call Type', 'Call Start Time', 'Call Duration', 'Related To', 'Contact Name', 'Created Time'];
   });
+
+  const [pinnedColumns, setPinnedColumns] = useState(() => {
+    try {
+      const saved = localStorage.getItem('calls_pinned_cols');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return [];
+  });
+
+  const handleTogglePin = (colKey, col) => {
+    const targetName = col?.colName || col?.header || colKey;
+    setPinnedColumns((prev) => {
+      const isAlreadyPinned = prev.includes(targetName) || prev.includes(colKey) || (col?.header && prev.includes(col.header));
+      let next;
+      if (isAlreadyPinned) {
+        next = prev.filter((k) => k !== targetName && k !== colKey && k !== col?.header);
+      } else {
+        next = [...prev, targetName];
+      }
+      try {
+        localStorage.setItem('calls_pinned_cols', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+  };
+
+  const handleHideColumn = (colKey, col) => {
+    const targetName = col?.colName || col?.header || colKey;
+    const colToHide = visibleColumns.find((c) => c === targetName || c === colKey || c === col?.header) || targetName;
+    if (colToHide === 'Subject') return;
+    const nextCols = visibleColumns.filter((c) => c !== colToHide);
+    setVisibleColumns(nextCols);
+    try {
+      localStorage.setItem('calls_cols', JSON.stringify(nextCols));
+    } catch (e) {}
+  };
 
   const [form, setForm] = useState(null);
   const [viewing, setViewing] = useState(null);
@@ -188,32 +306,39 @@ export default function Calls() {
       if (q && ![c.subject, contactName(c.contactId), accountName(c.accountId), c.notes, userName(c.ownerId)].some((v) => String(v).toLowerCase().includes(q))) return false;
       
       for (const [key, conf] of Object.entries(appliedFilters)) {
-        if (!conf || !conf.val) continue;
+        if (!conf || (!conf.val && conf.op !== 'Is Empty')) continue;
         let recordVal = '';
-        if (key === 'Call Type') recordVal = c.type;
-        else if (key === 'Call Owner' || key === 'Call Manager') recordVal = c.ownerId;
-        else if (key === 'Call Start Time') recordVal = c.dateTime;
-        else if (key === 'Contact Name') recordVal = c.contactId;
-        else if (key === 'Call Duration') recordVal = c.duration;
-        else if (key === 'Call Duration (in seconds)') recordVal = c.duration;
-        else if (key === 'Call Result') recordVal = c.status;
+        if (key === 'Call Type' || key === 'type') recordVal = c.type;
+        else if (key === 'Call Owner' || key === 'owner' || key === 'Call Manager' || key === 'callManager') recordVal = c.ownerId;
+        else if (key === 'Call Start Time' || key === 'dateTime') recordVal = c.dateTime;
+        else if (key === 'Contact Name' || key === 'contact') recordVal = c.contactId;
+        else if (key === 'Related To' || key === 'account') recordVal = c.accountId;
+        else if (key === 'Subject' || key === 'subject') recordVal = c.subject;
+        else if (key === 'Description' || key === 'notes') recordVal = c.notes || '';
+        else if (key === 'Call Duration' || key === 'duration' || key === 'Call Duration (in seconds)' || key === 'durationSec') recordVal = Number(c.duration) || 0;
+        else if (key === 'Call Result' || key === 'status') recordVal = c.status;
         else continue;
         
         const type = getFieldType(key);
         if (type === 'Dropdown') {
-          if (conf.op === 'Is' && recordVal !== conf.val) return false;
-          if (conf.op === 'Is Not' && recordVal === conf.val) return false;
+          const matchVal = (val) => String(recordVal).toLowerCase() === String(val).toLowerCase() ||
+            ((key.includes('Owner') || key.includes('Manager')) && userName(c.ownerId).toLowerCase() === String(val).toLowerCase()) ||
+            (key.includes('Contact') && contactName(c.contactId).toLowerCase() === String(val).toLowerCase()) ||
+            (key.includes('Related') && accountName(c.accountId).toLowerCase() === String(val).toLowerCase());
+          if (conf.op === 'Is' && !matchVal(conf.val)) return false;
+          if (conf.op === 'Is Not' && matchVal(conf.val)) return false;
         } else if (type === 'Number') {
+          const rNum = Number(recordVal) || 0;
           const valNum = Number(conf.val);
-          if (conf.op === 'Equals' && recordVal !== valNum) return false;
-          if (conf.op === 'Greater Than' && recordVal <= valNum) return false;
-          if (conf.op === 'Less Than' && recordVal >= valNum) return false;
+          if (conf.op === 'Equals' && rNum !== valNum) return false;
+          if (conf.op === 'Greater Than' && rNum <= valNum) return false;
+          if (conf.op === 'Less Than' && rNum >= valNum) return false;
           if (conf.op === 'Between' && conf.val2) {
-            if (recordVal < valNum || recordVal > Number(conf.val2)) return false;
+            if (rNum < valNum || rNum > Number(conf.val2)) return false;
           }
         } else if (type === 'Text') {
           const rStr = String(recordVal).toLowerCase();
-          const vStr = String(conf.val).toLowerCase();
+          const vStr = String(conf.val || '').toLowerCase();
           if (conf.op === 'Contains' && !rStr.includes(vStr)) return false;
           if (conf.op === 'Equals' && rStr !== vStr) return false;
           if (conf.op === 'Starts With' && !rStr.startsWith(vStr)) return false;
@@ -236,6 +361,48 @@ export default function Calls() {
   const reset = () => { setAppliedFilters({}); setFilterConfig({}); setSelectedFields(new Set()); setSearch(''); setRange(DEFAULT_RANGE); setSavedView('all'); };
   const moreCount = Object.keys(appliedFilters).length;
 
+  const handleFilterColumn = (colKey, filterState, col) => {
+    const targetName = col?.colName || col?.header || colKey;
+    const fieldName = visibleColumns.find((c) => c === targetName || c === colKey || c === col?.header) || targetName;
+    if (!filterState || (!filterState.val && filterState.op !== 'Is Empty')) {
+      setAppliedFilters((prev) => {
+        const next = { ...prev };
+        delete next[fieldName];
+        delete next[colKey];
+        if (col?.header) delete next[col.header];
+        return next;
+      });
+      setFilterConfig((prev) => {
+        const next = { ...prev };
+        delete next[fieldName];
+        delete next[colKey];
+        if (col?.header) delete next[col.header];
+        return next;
+      });
+    } else {
+      setAppliedFilters((prev) => ({
+        ...prev,
+        [fieldName]: filterState,
+      }));
+      setFilterConfig((prev) => ({
+        ...prev,
+        [fieldName]: filterState,
+      }));
+    }
+    table?.setPage?.(1);
+  };
+
+  const columnMenuConfig = useMemo(() => ({
+    module: 'calls',
+    pinnedColumns,
+    onTogglePin: handleTogglePin,
+    onHideColumn: handleHideColumn,
+    onFilterColumn: handleFilterColumn,
+    appliedFilters,
+    filterOptions: filterOptionsContext,
+    getFieldType: (k) => getFieldType(k),
+  }), [pinnedColumns, appliedFilters, filterOptionsContext, visibleColumns]);
+
   const fields = [
     { name: 'subject', label: 'Call Subject', required: true, span: 2 },
     { name: 'contactId', label: 'Contact Name', type: 'select', options: contactOptions, required: true, help: 'The account is linked automatically from the contact.' },
@@ -256,7 +423,12 @@ export default function Calls() {
   useUrlActions({
     onCreate: (p) => setForm({ mode: 'create', record: blank(p) }),
     onOpen: (id) => calls.some((c) => c.id === id) && setViewing(id),
-    onParams: (p) => { if (p.status) { /* handled */ } },
+    onParams: (p) => {
+      if (p.fromDeal) {
+        setReturnDealId(p.fromDeal);
+        sessionStorage.setItem('call_return_deal', p.fromDeal);
+      }
+    },
   });
 
   const submit = (v) => {
@@ -304,22 +476,13 @@ export default function Calls() {
   }), [accountName, contactName, userName]);
 
   const columns = useMemo(() => {
-    const cols = visibleColumns.map(c => ({ ...(allColumnsDef[c] || { key: c, header: c, sortable: false, render: () => <span className="text-ink-400">—</span> }) }));
+    const cols = visibleColumns.map(c => ({
+      ...(allColumnsDef[c] || { key: c, header: c, sortable: false, render: () => <span className="text-ink-400">—</span> }),
+      colName: c
+    }));
     cols.forEach(c => {
       if (!wrapText && !c.className?.includes('whitespace-nowrap')) c.className = (c.className ? c.className + ' ' : '') + 'whitespace-nowrap';
     });
-    cols.push({ key: 'actions', header: '', align: 'center', render: (c) => (
-      <div className="flex items-center justify-center gap-1.5">
-        <button className="icon-btn-primary" onClick={() => setViewing(c.id)} aria-label={`View ${c.subject}`}><Eye size={17} /></button>
-        <button className="icon-btn-primary" onClick={() => setForm({ mode: 'edit', record: toForm(c) })} aria-label={`Edit ${c.subject}`}><Pencil size={16} /></button>
-        <ActionMenu items={[
-          ...CALL_STATUSES.filter((s) => s !== c.status).map((s) => ({ label: `Mark as ${s}`, onClick: () => setStatus(c, s) })),
-          { label: 'Schedule follow-up call', icon: CalendarPlus, onClick: () => setForm({ mode: 'create', record: { ...blank({ contact: c.contactId, schedule: true }), subject: `Follow up: ${c.subject}` } }) },
-          { divider: true },
-          { label: 'Delete call', icon: Trash2, danger: true, onClick: () => setConfirm({ ids: [c.id], label: c.subject }) },
-        ]} />
-      </div>
-    ) });
     return cols;
   }, [visibleColumns, allColumnsDef, wrapText]);
 
@@ -440,10 +603,37 @@ export default function Calls() {
           );
         }}
         toolbar={{
+          sidebarToggle: { isOpen: filtersOpen, onToggle: () => setFiltersOpen((o) => !o) },
           filterActive: filtersOpen, onFilter: () => setFiltersOpen((o) => !o),
           sortOptions: [{ key: 'dateTime', label: 'Call Date & Time' }, { key: 'duration', label: 'Duration' }, { key: 'subject', label: 'Call Subject' }, { key: 'contact', label: 'Contact Name' }, { key: 'status', label: 'Status' }],
-          sort: table.sort, onSort: table.setSort, layouts: ['list', 'kanban', 'grid', 'chart'], layout, onLayout: setLayout,
-          onRefresh: refresh, refreshing, dense, onDense: () => setDense((d) => !d), module: 'Calls',
+          sort: table.sort,
+          onSort: table.setSort,
+          layouts: visibleViews,
+          layout,
+          onLayout: handleSelectVisibleView,
+          customViewsDropdown: (close) => (
+            <>
+              <MenuLabel>More Views ({dropdownViews.length})</MenuLabel>
+              {dropdownViews.map((v) => {
+                const Icon = v.icon;
+                return (
+                  <MenuItem
+                    key={v.key}
+                    close={close}
+                    icon={Icon}
+                    onClick={() => handleSelectDropdownView(v.key)}
+                  >
+                    {v.label}
+                  </MenuItem>
+                );
+              })}
+            </>
+          ),
+          onRefresh: refresh,
+          refreshing,
+          hideWorkflow: true,
+          hideDense: true,
+          module: 'Calls',
           primary: { label: 'Create Call', onClick: () => setForm({ mode: 'create', record: blank() }), menu: [
             { label: 'Create Call', icon: Plus, onClick: () => setForm({ mode: 'create', record: blank() }) },
             { label: 'Schedule a Call', icon: CalendarPlus, onClick: () => setForm({ mode: 'create', record: { ...blank({ schedule: true }), dateTime: '' } }) },
@@ -460,8 +650,11 @@ export default function Calls() {
       />
 
       <div className="flex gap-3 items-start mt-3">
-        {filtersOpen && (
-          <aside className="card hidden md:flex flex-col w-[250px] shrink-0 sticky top-[72px] h-[calc(100vh-86px)] overflow-hidden">
+        <aside
+          className={`card hidden md:flex flex-col shrink-0 sticky top-[72px] h-[calc(100vh-86px)] overflow-hidden transition-all duration-300 ease-in-out ${
+            filtersOpen ? 'w-[250px] opacity-100' : 'w-0 opacity-0 border-0 p-0 overflow-hidden -mr-3 pointer-events-none'
+          }`}
+        >
             <div className="px-3.5 pt-4 pb-2">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-[15px] font-semibold text-ink whitespace-nowrap">Filter Calls by</h2>
@@ -498,7 +691,6 @@ export default function Calls() {
               </div>
             )}
           </aside>
-        )}
 
         <div className="flex-1 min-w-0">
           <section className="card overflow-hidden">
@@ -508,7 +700,7 @@ export default function Calls() {
               <BulkButton icon={Download} onClick={() => exportRows(calls.filter((c) => table.selected.has(c.id)))}>Export</BulkButton>
               <BulkButton icon={Trash2} danger onClick={() => setConfirm({ ids: selectedIds, label: `${selectedIds.length} calls` })}>Delete</BulkButton>
             </BulkBar>
-            {layout === 'list' && <DataTable columns={columns} rows={table.pageRows} table={table} loading={refreshing} dense={dense} minWidth={1280}
+            {layout === 'list' && <DataTable columns={columns} rows={table.pageRows} table={table} loading={refreshing} dense={dense} minWidth={1280} columnMenu={columnMenuConfig}
               emptyAction={<button className="btn-primary mt-2 h-9" onClick={() => setForm({ mode: 'create', record: blank() })}><Plus size={16} />Log a Call</button>}
               headerExtra={
                 <th className="th w-[44px] text-center p-0">
@@ -520,7 +712,7 @@ export default function Calls() {
                     {(close) => (
                       <div className="py-1">
                         <MenuItem close={close} onClick={() => setManageColsOpen(true)}>Manage Columns</MenuItem>
-                        <MenuItem close={close} onClick={() => { localStorage.removeItem('calls_cols'); setVisibleColumns(['Note Badge', 'Subject', 'Call Manager', 'Description', 'Call Type', 'Call Start Time', 'Call Duration', 'Related To', 'Contact Name', 'Created Time']); }}>Reset Column Size</MenuItem>
+                        <MenuItem close={close} onClick={() => { localStorage.removeItem('calls_cols'); localStorage.removeItem('calls_pinned_cols'); setPinnedColumns([]); setVisibleColumns(['Note Badge', 'Subject', 'Call Manager', 'Description', 'Call Type', 'Call Start Time', 'Call Duration', 'Related To', 'Contact Name', 'Created Time']); }}>Reset Column Size</MenuItem>
                         <MenuDivider />
                         <div className="px-3 py-1.5 text-[13px] font-medium text-ink-500 flex justify-between">Records Per Page <span className="text-ink-600 font-semibold">{pageSize} ▸</span></div>
                         <div className="pl-4 pr-2 pb-1 space-y-0.5">
@@ -541,6 +733,7 @@ export default function Calls() {
             {layout === 'kanban' && <div className="p-3"><KanbanView groups={CALL_STATUSES.map((s) => ({ key: s, label: s, color: STATUS_COLORS[s] }))} rows={table.sorted} groupOf={(c) => c.status}
               onMove={setStatus} onCardClick={(c) => setViewing(c.id)}
               renderCard={(c) => (<div><div className="text-[13.5px] font-semibold text-ink">{c.subject}</div><div className="text-[12px] text-ink-500 mt-0.5">{contactName(c.contactId)} · {accountName(c.accountId)}</div><div className="flex items-center justify-between mt-2 text-[12px] text-ink-600"><CallTypeIcon type={c.type} /><span>{fmtDate(c.dateTime)}</span></div></div>)} /></div>}
+
             {layout === 'grid' && <div className="p-3"><GridView rows={table.pageRows} onCardClick={(c) => setViewing(c.id)} renderCard={(c) => (
               <>
                 <div className="flex items-start justify-between gap-2"><div className="font-semibold text-ink">{c.subject}</div><StatusBadge kind="callStatus" value={c.status} size="sm" /></div>
@@ -549,8 +742,139 @@ export default function Calls() {
                 <p className="text-[12.5px] text-ink-500 mt-2 line-clamp-2">{c.notes}</p>
               </>
             )} /></div>}
+
             {layout === 'chart' && <ChartView title="Calls by status (filtered)" data={CALL_STATUSES.map((s) => ({ name: s, value: filtered.filter((c) => c.status === s).length, color: STATUS_COLORS[s] }))} valueLabel="Calls" />}
-            {(layout === 'list' || layout === 'grid') && <div className="px-4"><Pagination table={table} noun="calls" /></div>}
+
+            {/* 5. Timeline View */}
+            {layout === 'timeline' && (
+              <CallsTimelineView
+                rows={table.sorted}
+                accountName={accountName}
+                contactName={contactName}
+                userName={userName}
+                onView={(id) => setViewing(id)}
+                onEdit={(c) => setForm({ mode: 'edit', record: toForm(c) })}
+                onDelete={(c) => setConfirm({ ids: [c.id], label: c.subject })}
+              />
+            )}
+
+            {/* 6. Split View */}
+            {layout === 'split' && (
+              <CallsSplitView
+                calls={table.sorted}
+                accountName={accountName}
+                contactName={contactName}
+                userName={userName}
+                onView={(id) => setViewing(id)}
+                onEdit={(c) => setForm({ mode: 'edit', record: toForm(c) })}
+                onDelete={(c) => setConfirm({ ids: [c.id], label: c.subject })}
+                CALL_STATUSES={CALL_STATUSES}
+                STATUS_COLORS={STATUS_COLORS}
+              />
+            )}
+
+            {/* 7. Custom List View */}
+            {layout === 'custom_list' && (
+              <div>
+                <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 mx-3.5 my-3 bg-slate-50 border border-line rounded-xl text-[13px]">
+                  <div className="flex items-center gap-2">
+                    <SlidersHorizontal size={16} className="text-primary" />
+                    <span className="font-semibold text-ink">Custom List View:</span>
+                    <span className="text-ink-500">Configure or manage custom list views with tailored column sets and filter criteria.</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setManageColsOpen(true)}
+                    className="btn-primary h-8 px-3 rounded-md text-[12.5px] font-semibold flex items-center gap-1.5"
+                  >
+                    <Settings2 size={13} />
+                    <span>Manage Columns</span>
+                  </button>
+                </div>
+                <DataTable columns={columns} rows={table.pageRows} table={table} loading={refreshing} dense={dense} minWidth={1280} columnMenu={columnMenuConfig}
+                  emptyAction={<button className="btn-primary mt-2 h-9" onClick={() => setForm({ mode: 'create', record: blank() })}><Plus size={16} />Log a Call</button>}
+                  headerExtra={
+                    <th className="th w-[44px] text-center p-0">
+                      <Dropdown width={180} align="right" trigger={
+                        <button type="button" className="h-7 w-7 inline-flex items-center justify-center rounded border border-line bg-white hover:bg-page mt-1">
+                          <Settings2 size={15} className="text-ink-600" />
+                        </button>
+                      }>
+                        {(close) => (
+                          <div className="py-1">
+                            <MenuItem close={close} onClick={() => setManageColsOpen(true)}>Manage Columns</MenuItem>
+                            <MenuItem close={close} onClick={() => { localStorage.removeItem('calls_cols'); localStorage.removeItem('calls_pinned_cols'); setPinnedColumns([]); setVisibleColumns(['Note Badge', 'Subject', 'Call Manager', 'Description', 'Call Type', 'Call Start Time', 'Call Duration', 'Related To', 'Contact Name', 'Created Time']); }}>Reset Column Size</MenuItem>
+                            <MenuDivider />
+                            <div className="px-3 py-1.5 text-[13px] font-medium text-ink-500 flex justify-between">Records Per Page <span className="text-ink-600 font-semibold">{pageSize} ▸</span></div>
+                            <div className="pl-4 pr-2 pb-1 space-y-0.5">
+                               {[10, 25, 50, 100, 200].map(sz => <MenuItem key={sz} close={close} active={pageSize === sz} onClick={() => { setPageSize(sz); table.setPage(1); }}>{sz}</MenuItem>)}
+                            </div>
+                            <MenuDivider />
+                            <div className="px-3 py-1.5 text-[13px] font-medium text-ink-500 flex justify-between">View Mode <span className="text-ink-600 font-semibold">{wrapText ? 'Wrap Text' : 'No Wrap'} ▸</span></div>
+                            <div className="pl-4 pr-2 pb-1 space-y-0.5">
+                               <MenuItem close={close} active={wrapText} onClick={() => setWrapText(true)}>Wrap Text</MenuItem>
+                               <MenuItem close={close} active={!wrapText} onClick={() => setWrapText(false)}>No Wrap</MenuItem>
+                            </div>
+                          </div>
+                        )}
+                      </Dropdown>
+                    </th>
+                  }
+                />
+              </div>
+            )}
+
+            {/* 8. Tile View */}
+            {layout === 'tile' && (
+              <CallsTileView
+                rows={table.pageRows}
+                accountName={accountName}
+                contactName={contactName}
+                userName={userName}
+                onView={(id) => setViewing(id)}
+                onEdit={(c) => setForm({ mode: 'edit', record: toForm(c) })}
+                onDelete={(c) => setConfirm({ ids: [c.id], label: c.subject })}
+                onStatusChange={setStatus}
+                CALL_STATUSES={CALL_STATUSES}
+                STATUS_COLORS={STATUS_COLORS}
+              />
+            )}
+
+            {/* 9. Table View */}
+            {layout === 'table' && (
+              <DataTable columns={columns} rows={table.pageRows} table={table} loading={refreshing} dense={true} minWidth={1280} columnMenu={columnMenuConfig}
+                emptyAction={<button className="btn-primary mt-2 h-9" onClick={() => setForm({ mode: 'create', record: blank() })}><Plus size={16} />Log a Call</button>}
+                headerExtra={
+                  <th className="th w-[44px] text-center p-0">
+                    <Dropdown width={180} align="right" trigger={
+                      <button type="button" className="h-7 w-7 inline-flex items-center justify-center rounded border border-line bg-white hover:bg-page mt-1">
+                        <Settings2 size={15} className="text-ink-600" />
+                      </button>
+                    }>
+                      {(close) => (
+                        <div className="py-1">
+                          <MenuItem close={close} onClick={() => setManageColsOpen(true)}>Manage Columns</MenuItem>
+                          <MenuItem close={close} onClick={() => { localStorage.removeItem('calls_cols'); localStorage.removeItem('calls_pinned_cols'); setPinnedColumns([]); setVisibleColumns(['Note Badge', 'Subject', 'Call Manager', 'Description', 'Call Type', 'Call Start Time', 'Call Duration', 'Related To', 'Contact Name', 'Created Time']); }}>Reset Column Size</MenuItem>
+                          <MenuDivider />
+                          <div className="px-3 py-1.5 text-[13px] font-medium text-ink-500 flex justify-between">Records Per Page <span className="text-ink-600 font-semibold">{pageSize} ▸</span></div>
+                          <div className="pl-4 pr-2 pb-1 space-y-0.5">
+                             {[10, 25, 50, 100, 200].map(sz => <MenuItem key={sz} close={close} active={pageSize === sz} onClick={() => { setPageSize(sz); table.setPage(1); }}>{sz}</MenuItem>)}
+                          </div>
+                          <MenuDivider />
+                          <div className="px-3 py-1.5 text-[13px] font-medium text-ink-500 flex justify-between">View Mode <span className="text-ink-600 font-semibold">{wrapText ? 'Wrap Text' : 'No Wrap'} ▸</span></div>
+                          <div className="pl-4 pr-2 pb-1 space-y-0.5">
+                             <MenuItem close={close} active={wrapText} onClick={() => setWrapText(true)}>Wrap Text</MenuItem>
+                             <MenuItem close={close} active={!wrapText} onClick={() => setWrapText(false)}>No Wrap</MenuItem>
+                          </div>
+                        </div>
+                      )}
+                    </Dropdown>
+                  </th>
+                }
+              />
+            )}
+
+            {(['list', 'grid', 'tile', 'table', 'custom_list'].includes(layout)) && <div className="px-4"><Pagination table={table} noun="calls" /></div>}
           </section>
         </div>
       </div>
@@ -575,7 +899,17 @@ export default function Calls() {
       {viewing && (
         <CallDetail 
           id={viewing} 
-          onClose={() => setViewing(null)} 
+          onClose={() => {
+            const sp = new URLSearchParams(window.location.search);
+            const dealId = returnDealId || sp.get('fromDeal') || sessionStorage.getItem('call_return_deal');
+            if (dealId) {
+              sessionStorage.removeItem('call_return_deal');
+              setReturnDealId(null);
+              navigate(`/deals?open=${dealId}`);
+            } else {
+              setViewing(null);
+            }
+          }} 
           onEdit={(c) => setForm({ mode: "edit", record: toForm(c) })}
           onDelete={(id) => { setConfirm({ ids: [id], label: "this call" }); }}
           onPrev={() => {

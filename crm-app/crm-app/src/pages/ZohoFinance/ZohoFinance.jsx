@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  AlarmClock, BadgeCheck, ChevronDown, Download, Eye, FileText, IndianRupee, Layers, LayoutGrid, Pencil, Plus, Receipt, Trash2, Upload, Wallet,
+  AlarmClock, BadgeCheck, ChevronDown, Clock3, Columns2, Columns3, Download, FileText, IndianRupee, Layers, LayoutDashboard, LayoutGrid, List, Pencil, PieChart, Plus, Receipt, SlidersHorizontal, Table2, Trash2, Upload, Wallet, Search, Settings2
 } from 'lucide-react';
 import { useCRM } from '../../context/CRMContext';
 import PageHeader from '../../components/common/PageHeader';
@@ -15,7 +15,7 @@ import ActionMenu from '../../components/common/ActionMenu';
 import FormModal from '../../components/common/RecordForm';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
 import { Drawer, SectionTitle } from '../../components/common/Modal';
-import Dropdown, { MenuItem, MenuLabel } from '../../components/common/Dropdown';
+import Dropdown, { MenuItem, MenuLabel, MenuDivider } from '../../components/common/Dropdown';
 import BulkBar, { BulkButton } from '../../components/common/BulkBar';
 import { ChartView, GridView, KanbanView } from '../../components/common/Views';
 import DonutChart, { DonutLegend } from '../../components/charts/DonutChart';
@@ -28,6 +28,23 @@ import {
   MONTHS, addDays, axisCompact, balanceOf, deriveInvoiceStatus, fmtCompact, fmtDate, fmtINR, fmtNum, inRange, invoiceKpis, monthIndex, pct, todayISO, trend,
 } from '../../utils/calculations';
 import { exportCSV } from '../../utils/exportCSV';
+import FinanceTileView from './FinanceTileView';
+import FinanceTimelineView from './FinanceTimelineView';
+import FinanceSplitView from './FinanceSplitView';
+
+export const ALL_9_VIEWS = [
+  { key: 'list', label: 'List View', icon: List },
+  { key: 'kanban', label: 'Kanban View', icon: Columns3 },
+  { key: 'grid', label: 'Grid View', icon: LayoutGrid },
+  { key: 'chart', label: 'Chart View', icon: PieChart },
+  { key: 'timeline', label: 'Timeline View', icon: Clock3 },
+  { key: 'split', label: 'Split View', icon: Columns2 },
+  { key: 'custom_list', label: 'Custom List View', icon: SlidersHorizontal },
+  { key: 'tile', label: 'Tile View', icon: LayoutDashboard },
+  { key: 'table', label: 'Table View', icon: Table2 },
+];
+
+const DEFAULT_VISIBLE_VIEWS = ['list', 'kanban', 'grid', 'chart', 'timeline', 'split'];
 
 const DEFAULT_RANGE = { from: '2026-01-01', to: '2026-12-31' };
 const EMPTY = { status: '', type: '', account: '', minAmt: '', maxAmt: '', dueFrom: '', dueTo: '', withBalance: false };
@@ -35,12 +52,132 @@ const STATUS_COLORS = { Paid: '#12C26B', Pending: '#FFA51F', Overdue: '#F04438',
 const TYPE_COLORS = { 'Sales Invoice': '#2F7BF5', 'Recurring Invoice': '#8E3CF2', 'Credit Note': '#FFA51F', 'Debit Note': '#12C26B' };
 const p0 = (v) => `${Math.round(v)}%`;
 
+const ALL_COLUMNS = [
+  'Invoice Number', 'Account Name', 'Invoice Type', 'Invoice Date', 'Due Date', 'Amount', 'Paid Amount', 'Balance', 'Status', 'Notes'
+];
+
+function ManageColsModal({ open, onClose, visibleCols, onSave }) {
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState(new Set(visibleCols));
+
+  useMemo(() => {
+    if (open) {
+      setSelected(new Set(visibleCols));
+      setSearch('');
+    }
+  }, [open, visibleCols]);
+
+  if (!open) return null;
+
+  const filteredCols = ALL_COLUMNS.filter(c => c.toLowerCase().includes(search.toLowerCase()));
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50" onClick={onClose}>
+      <div className="bg-white rounded-lg shadow-xl w-[400px] max-w-full flex flex-col max-h-[85vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-line flex items-center justify-between">
+          <h2 className="text-[16px] font-semibold text-primary">Manage Columns</h2>
+        </div>
+        <div className="p-4 border-b border-line">
+          <div className="relative">
+            <Search className="absolute left-3 top-2.5 text-ink-400" size={16} />
+            <input type="text" placeholder="Search" className="w-full h-9 pl-9 pr-3 text-[14px] border border-line rounded focus:border-primary outline-none" value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-3 thin-scroll">
+          {filteredCols.map(c => {
+            const isMandatory = c === 'Invoice Number';
+            const isChecked = selected.has(c);
+            return (
+              <label key={c} className="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" className="cb mt-1" disabled={isMandatory} checked={isChecked || isMandatory} onChange={(e) => {
+                  if (isMandatory) return;
+                  const next = new Set(selected);
+                  if (e.target.checked) next.add(c);
+                  else next.delete(c);
+                  setSelected(next);
+                }} />
+                <span className="text-[14px] font-medium text-ink flex-1">
+                  {c}{isMandatory && <span className="text-red-500 ml-0.5">*</span>}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+        <div className="p-4 border-t border-line flex items-center justify-center gap-3">
+          <button onClick={onClose} className="btn-secondary h-8 px-4 rounded text-[13px]">Cancel</button>
+          <button onClick={() => onSave(Array.from(selected))} className="btn-primary h-8 px-4 rounded text-[13px]">Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ZohoFinance() {
   const { invoices, accounts, baselines, accountName, accountsById, createRecord, updateRecord, deleteRecords } = useCRM();
   const toast = useToast();
   const { refreshing, refresh } = useRefresh('Invoices');
-  const [layout, setLayout] = useState('list');
-  const [dense, setDense] = useState(true);
+  // Exactly 6 visible icons in toolbar
+  const [visibleViews, setVisibleViews] = useState(() => {
+    try {
+      const saved = localStorage.getItem('zoho_finance_visible_views');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (
+          Array.isArray(parsed) &&
+          parsed.length === 6 &&
+          parsed.every((k) => ALL_9_VIEWS.some((v) => v.key === k))
+        ) {
+          return parsed;
+        }
+      }
+    } catch (e) {}
+    return DEFAULT_VISIBLE_VIEWS;
+  });
+
+  const [layout, setLayoutState] = useState(() => {
+    const saved = localStorage.getItem('zoho_finance_layout');
+    if (saved && ALL_9_VIEWS.some((v) => v.key === saved)) {
+      return saved;
+    }
+    return 'list';
+  });
+
+  const setLayout = (l) => {
+    setLayoutState(l);
+    try {
+      localStorage.setItem('zoho_finance_layout', l);
+    } catch (e) {}
+  };
+
+  // The remaining 3 views kept in the dropdown
+  const dropdownViews = useMemo(() => {
+    return ALL_9_VIEWS.filter((v) => !visibleViews.includes(v.key));
+  }, [visibleViews]);
+
+  // Clicking a visible icon displays that view immediately
+  const handleSelectVisibleView = (key) => {
+    setLayout(key);
+  };
+
+  // Selecting a hidden view from the dropdown replaces the currently active visible icon.
+  // Moves the replaced view into the dropdown.
+  // Always maintains exactly 6 visible icons and 3 dropdown options.
+  const handleSelectDropdownView = (dropdownKey) => {
+    setVisibleViews((prevVisible) => {
+      const activeIndex = prevVisible.indexOf(layout);
+      const replaceIndex = activeIndex >= 0 ? activeIndex : 0;
+      const nextVisible = [...prevVisible];
+      nextVisible[replaceIndex] = dropdownKey;
+      try {
+        localStorage.setItem('zoho_finance_visible_views', JSON.stringify(nextVisible));
+      } catch (e) {}
+      return nextVisible;
+    });
+
+    setLayout(dropdownKey);
+  };
+
+  const dense = false;
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [savedView, setSavedView] = useState('all');
   const [search, setSearch] = useState('');
@@ -50,6 +187,75 @@ export default function ZohoFinance() {
   const [payFor, setPayFor] = useState(null);
   const [viewing, setViewing] = useState(null);
   const [confirm, setConfirm] = useState(null);
+
+  const [manageColsOpen, setManageColsOpen] = useState(false);
+  const [pageSize, setPageSize] = useState(10);
+  const [wrapText, setWrapText] = useState(true);
+  const [visibleColumns, setVisibleColumns] = useState(() => {
+    try {
+      const saved = localStorage.getItem('zoho_finance_cols');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return ['Invoice Number', 'Account Name', 'Invoice Type', 'Invoice Date', 'Due Date', 'Amount', 'Paid Amount', 'Balance', 'Status'];
+  });
+
+  const [pinnedColumns, setPinnedColumns] = useState(() => {
+    try {
+      const saved = localStorage.getItem('zoho_finance_pinned_cols');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return [];
+  });
+
+  const [colFilters, setColFilters] = useState({});
+
+  const handleTogglePin = (colKey, col) => {
+    const targetName = col?.colName || col?.header || colKey;
+    setPinnedColumns((prev) => {
+      const isAlreadyPinned = prev.includes(targetName) || prev.includes(colKey) || (col?.header && prev.includes(col.header));
+      let next;
+      if (isAlreadyPinned) {
+        next = prev.filter((k) => k !== targetName && k !== colKey && k !== col?.header);
+      } else {
+        next = [...prev, targetName];
+      }
+      try {
+        localStorage.setItem('zoho_finance_pinned_cols', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+  };
+
+  const handleHideColumn = (colKey, col) => {
+    const targetName = col?.colName || col?.header || colKey;
+    const colToHide = visibleColumns.find((c) => c === targetName || c === colKey || c === col?.header) || targetName;
+    if (colToHide === 'Invoice Number') return;
+    const nextCols = visibleColumns.filter((c) => c !== colToHide);
+    setVisibleColumns(nextCols);
+    try {
+      localStorage.setItem('zoho_finance_cols', JSON.stringify(nextCols));
+    } catch (e) {}
+  };
+
+  const handleFilterColumn = (colKey, filterState, col) => {
+    const targetName = col?.colName || col?.header || colKey;
+    const fieldName = visibleColumns.find((c) => c === targetName || c === colKey || c === col?.header) || targetName;
+    if (!filterState || (!filterState.val && filterState.op !== 'Is Empty')) {
+      setColFilters((prev) => {
+        const next = { ...prev };
+        delete next[fieldName];
+        delete next[colKey];
+        if (col?.header) delete next[col.header];
+        return next;
+      });
+    } else {
+      setColFilters((prev) => ({
+        ...prev,
+        [fieldName]: filterState,
+      }));
+    }
+    table?.setPage?.(1);
+  };
 
   const views = [
     { key: 'all', label: 'All Transactions', test: () => true },
@@ -78,16 +284,84 @@ export default function ZohoFinance() {
       if (f.dueFrom && i.dueDate < f.dueFrom) return false;
       if (f.dueTo && i.dueDate > f.dueTo) return false;
       if (f.withBalance && balanceOf(i) <= 0) return false;
+
+      // Apply Column Dropdown Menu Filters
+      for (const [key, conf] of Object.entries(colFilters)) {
+        if (!conf || (!conf.val && conf.op !== 'Is Empty')) continue;
+        let recordVal = '';
+        if (key === 'Invoice Number' || key === 'number') recordVal = i.number;
+        else if (key === 'Account Name' || key === 'account') recordVal = accountName(i.accountId);
+        else if (key === 'Invoice Type' || key === 'type') recordVal = i.type;
+        else if (key === 'Invoice Date' || key === 'invoiceDate') recordVal = i.invoiceDate;
+        else if (key === 'Due Date' || key === 'dueDate') recordVal = i.dueDate;
+        else if (key === 'Amount' || key === 'amount') recordVal = Number(i.amount) || 0;
+        else if (key === 'Paid Amount' || key === 'paidAmount') recordVal = Number(i.paidAmount) || 0;
+        else if (key === 'Balance' || key === 'balance') recordVal = Number(balanceOf(i)) || 0;
+        else if (key === 'Status' || key === 'status') recordVal = i.status;
+        else if (key === 'Notes' || key === 'notes') recordVal = i.notes || '';
+        else continue;
+
+        const isDate = key.includes('Date');
+        const isNum = ['amount', 'paidAmount', 'balance', 'Amount', 'Paid Amount', 'Balance'].includes(key);
+        const isDropdown = ['type', 'status', 'Invoice Type', 'Status'].includes(key);
+
+        if (isDropdown) {
+          if (conf.op === 'Is' && String(recordVal).toLowerCase() !== String(conf.val).toLowerCase()) return false;
+          if (conf.op === 'Is Not' && String(recordVal).toLowerCase() === String(conf.val).toLowerCase()) return false;
+        } else if (isNum) {
+          const rNum = Number(recordVal) || 0;
+          const valNum = Number(conf.val);
+          if (conf.op === 'Equals' && rNum !== valNum) return false;
+          if (conf.op === 'Greater Than' && rNum <= valNum) return false;
+          if (conf.op === 'Less Than' && rNum >= valNum) return false;
+          if (conf.op === 'Between' && conf.val2) {
+            if (rNum < valNum || rNum > Number(conf.val2)) return false;
+          }
+        } else if (isDate) {
+          if (conf.op === 'Before' && recordVal >= conf.val) return false;
+          if (conf.op === 'After' && recordVal <= conf.val) return false;
+          if (conf.op === 'Between' && conf.val2) {
+            if (recordVal < conf.val || recordVal > conf.val2) return false;
+          }
+        } else {
+          const rStr = String(recordVal).toLowerCase();
+          const vStr = String(conf.val || '').toLowerCase();
+          if (conf.op === 'Contains' && !rStr.includes(vStr)) return false;
+          if (conf.op === 'Equals' && rStr !== vStr) return false;
+          if (conf.op === 'Starts With' && !rStr.startsWith(vStr)) return false;
+          if (conf.op === 'Is Empty' && rStr.length > 0) return false;
+        }
+      }
+
       return true;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [invoices, search, range, f, savedView, accountName]);
+  }, [invoices, search, range, f, savedView, accountName, colFilters]);
 
   const accessors = useMemo(() => ({ account: (i) => accountName(i.accountId), balance: balanceOf }), [accountName]);
-  const table = useTable(filtered, { accessors, defaultSort: { key: 'number', dir: 'asc' }, pageSize: 10 });
+  const table = useTable(filtered, { accessors, defaultSort: { key: 'number', dir: 'asc' }, pageSize });
   const set = (k) => (v) => { setF((s) => ({ ...s, [k]: v })); table.setPage(1); };
-  const reset = () => { setF(EMPTY); setSearch(''); setRange(DEFAULT_RANGE); setSavedView('all'); };
-  const moreCount = ['minAmt', 'maxAmt', 'dueFrom', 'dueTo', 'withBalance'].filter((k) => f[k]).length;
+  const reset = () => { setF(EMPTY); setColFilters({}); setSearch(''); setRange(DEFAULT_RANGE); setSavedView('all'); };
+  const moreCount = ['minAmt', 'maxAmt', 'dueFrom', 'dueTo', 'withBalance'].filter((k) => f[k]).length + Object.keys(colFilters).length;
+
+  const filterOptionsContext = useMemo(() => ({
+    'Invoice Type': INVOICE_TYPES.map(s => ({ value: s, label: s })),
+    'type': INVOICE_TYPES.map(s => ({ value: s, label: s })),
+    'Status': INVOICE_STATUSES.map(s => ({ value: s, label: s })),
+    'status': INVOICE_STATUSES.map(s => ({ value: s, label: s })),
+    'Account Name': invAccounts,
+    'account': invAccounts,
+  }), [invAccounts]);
+
+  const columnMenuConfig = useMemo(() => ({
+    module: 'zoho_finance',
+    pinnedColumns,
+    onTogglePin: handleTogglePin,
+    onHideColumn: handleHideColumn,
+    onFilterColumn: handleFilterColumn,
+    appliedFilters: colFilters,
+    filterOptions: filterOptionsContext,
+  }), [pinnedColumns, colFilters, filterOptionsContext, visibleColumns]);
 
   const k = invoiceKpis(filtered);
   const base = baselines.invoices;
@@ -187,30 +461,29 @@ export default function ZohoFinance() {
     </Dropdown>
   );
 
-  const columns = [
-    { key: 'number', header: 'Invoice Number', sortable: true, render: (i) => <button onClick={() => setViewing(i.id)} className="text-primary hover:underline whitespace-nowrap">{i.number}</button> },
-    { key: 'account', header: 'Account Name', sortable: true, render: (i) => <Link to={`/accounts?open=${i.accountId}`} className="text-ink-600 hover:text-primary whitespace-nowrap">{accountName(i.accountId)}</Link> },
-    { key: 'type', header: 'Invoice Type', sortable: true, render: (i) => <StatusBadge kind="invoiceType" value={i.type} size="sm" className="min-w-[96px]" /> },
-    { key: 'invoiceDate', header: 'Invoice Date', sortable: true, className: 'whitespace-nowrap', render: (i) => fmtDate(i.invoiceDate) },
-    { key: 'dueDate', header: 'Due Date', sortable: true, className: 'whitespace-nowrap', render: (i) => <span className={balanceOf(i) > 0 && i.dueDate < todayISO() ? 'text-danger-700' : ''}>{fmtDate(i.dueDate)}</span> },
-    { key: 'amount', header: 'Amount (₹)', sortable: true, render: (i) => fmtNum(i.amount) },
-    { key: 'paidAmount', header: 'Paid Amount (₹)', sortable: true, render: (i) => fmtNum(i.paidAmount) },
-    { key: 'balance', header: 'Balance (₹)', sortable: true, render: (i) => <span className={balanceOf(i) ? 'text-ink' : ''}>{fmtNum(balanceOf(i))}</span> },
-    { key: 'status', header: 'Status', sortable: true, render: (i) => statusMenu(i, <button type="button" title="Update payment status" className={`inline-flex items-center justify-center h-[22px] min-w-[66px] px-2 rounded-md text-[12px] font-medium whitespace-nowrap ${badgeTone('invoiceStatus', i.status)}`}>{i.status}</button>) },
-    { key: 'actions', header: 'Actions', align: 'center', render: (i) => (
-      <div className="flex items-center justify-center gap-1">
-        <button className="p-1.5 rounded-md text-ink-600 hover:bg-page hover:text-primary" onClick={() => setViewing(i.id)} aria-label={`View ${i.number}`}><Eye size={16} /></button>
-        <button className="p-1.5 rounded-md text-ink-600 hover:bg-page hover:text-primary" onClick={() => setForm({ mode: 'edit', record: i })} aria-label={`Edit ${i.number}`}><Pencil size={15} /></button>
-        <ActionMenu boxed={false} items={[
-          { label: 'Record payment', icon: Wallet, disabled: balanceOf(i) <= 0, onClick: () => setPayFor(i.id) },
-          { label: 'Mark as paid', icon: BadgeCheck, disabled: i.status === 'Paid', onClick: () => setStatus(i, 'Paid') },
-          { label: 'Mark as overdue', icon: AlarmClock, disabled: i.status === 'Overdue' || balanceOf(i) <= 0, onClick: () => setStatus(i, 'Overdue') },
-          { divider: true },
-          { label: 'Delete invoice', icon: Trash2, danger: true, onClick: () => setConfirm({ ids: [i.id], label: i.number }) },
-        ]} />
-      </div>
-    ) },
-  ];
+  const allColumnsDef = useMemo(() => ({
+    'Invoice Number': { key: 'number', header: 'Invoice Number', sortable: true, render: (i) => <button onClick={() => setViewing(i.id)} className="text-primary hover:underline whitespace-nowrap">{i.number}</button> },
+    'Account Name': { key: 'account', header: 'Account Name', sortable: true, render: (i) => <Link to={`/accounts?open=${i.accountId}`} className="text-ink-600 hover:text-primary whitespace-nowrap">{accountName(i.accountId)}</Link> },
+    'Invoice Type': { key: 'type', header: 'Invoice Type', sortable: true, render: (i) => <StatusBadge kind="invoiceType" value={i.type} size="sm" className="min-w-[96px]" /> },
+    'Invoice Date': { key: 'invoiceDate', header: 'Invoice Date', sortable: true, className: 'whitespace-nowrap', render: (i) => fmtDate(i.invoiceDate) },
+    'Due Date': { key: 'dueDate', header: 'Due Date', sortable: true, className: 'whitespace-nowrap', render: (i) => <span className={balanceOf(i) > 0 && i.dueDate < todayISO() ? 'text-danger-700' : ''}>{fmtDate(i.dueDate)}</span> },
+    'Amount': { key: 'amount', header: 'Amount (₹)', sortable: true, render: (i) => fmtNum(i.amount) },
+    'Paid Amount': { key: 'paidAmount', header: 'Paid Amount (₹)', sortable: true, render: (i) => fmtNum(i.paidAmount) },
+    'Balance': { key: 'balance', header: 'Balance (₹)', sortable: true, render: (i) => <span className={balanceOf(i) ? 'text-ink' : ''}>{fmtNum(balanceOf(i))}</span> },
+    'Status': { key: 'status', header: 'Status', sortable: true, render: (i) => statusMenu(i, <button type="button" title="Update payment status" className={`inline-flex items-center justify-center h-[22px] min-w-[66px] px-2 rounded-md text-[12px] font-medium whitespace-nowrap ${badgeTone('invoiceStatus', i.status)}`}>{i.status}</button>) },
+    'Notes': { key: 'notes', header: 'Notes', sortable: false, render: (i) => <span className="truncate max-w-[150px]">{i.notes || '—'}</span> },
+  }), [accountName]);
+
+  const columns = useMemo(() => {
+    const cols = visibleColumns.map(c => ({
+      ...(allColumnsDef[c] || { key: c, header: c, sortable: false, render: () => <span className="text-ink-400">—</span> }),
+      colName: c
+    }));
+    cols.forEach(c => {
+      if (!wrapText && !c.className?.includes('whitespace-nowrap')) c.className = (c.className ? c.className + ' ' : '') + 'whitespace-nowrap';
+    });
+    return cols;
+  }, [visibleColumns, allColumnsDef, wrapText]);
 
   const rec = invoices.find((i) => i.id === viewing);
   const payInv = invoices.find((i) => i.id === payFor);
@@ -223,10 +496,38 @@ export default function ZohoFinance() {
         views={views} view={savedView} onViewChange={(v) => { setSavedView(v); table.setPage(1); }}
         tabMenu={[{ label: 'Export filtered invoices (CSV)', icon: Download, onClick: () => exportRows(table.sorted) }, { label: 'Check for overdue invoices', icon: AlarmClock, onClick: runOverdueCheck }, { label: 'Reset filters', onClick: reset }]}
         toolbar={{
-          filterActive: filtersOpen, onFilter: () => setFiltersOpen((o) => !o),
+          sidebarToggle: { isOpen: filtersOpen, onToggle: () => setFiltersOpen((o) => !o) },
+          filterActive: filtersOpen,
+          onFilter: () => setFiltersOpen((o) => !o),
           sortOptions: [{ key: 'number', label: 'Invoice Number' }, { key: 'invoiceDate', label: 'Invoice Date' }, { key: 'dueDate', label: 'Due Date' }, { key: 'amount', label: 'Amount' }, { key: 'balance', label: 'Balance' }],
-          sort: table.sort, onSort: table.setSort, layouts: ['list', 'kanban', 'grid', 'chart'], layout, onLayout: setLayout,
-          onRefresh: refresh, refreshing, dense, onDense: () => setDense((d) => !d), module: 'Zoho Finance',
+          sort: table.sort,
+          onSort: table.setSort,
+          layouts: visibleViews,
+          layout,
+          onLayout: handleSelectVisibleView,
+          customViewsDropdown: (close) => (
+            <>
+              <MenuLabel>More Views ({dropdownViews.length})</MenuLabel>
+              {dropdownViews.map((v) => {
+                const Icon = v.icon;
+                return (
+                  <MenuItem
+                    key={v.key}
+                    close={close}
+                    icon={Icon}
+                    onClick={() => handleSelectDropdownView(v.key)}
+                  >
+                    {v.label}
+                  </MenuItem>
+                );
+              })}
+            </>
+          ),
+          onRefresh: refresh,
+          refreshing,
+          hideWorkflow: true,
+          hideDense: true,
+          module: 'Zoho Finance',
           primary: { label: 'Create Invoice', onClick: () => setForm({ mode: 'create', record: blank() }), menu: [
             { label: 'Create Invoice', icon: Plus, onClick: () => setForm({ mode: 'create', record: blank() }) },
             { label: 'Create Credit Note', icon: Receipt, onClick: () => setForm({ mode: 'create', record: { ...blank(), type: 'Credit Note' } }) },
@@ -249,8 +550,11 @@ export default function ZohoFinance() {
       </div>
 
       <div className="flex gap-3 items-start">
-        {filtersOpen && (
-          <aside className="card hidden md:block w-[220px] shrink-0 px-3.5 py-4 sticky top-[72px] max-h-[calc(100vh-86px)] overflow-y-auto thin-scroll">
+        <aside
+          className={`card hidden md:block shrink-0 px-3.5 py-4 sticky top-[72px] max-h-[calc(100vh-86px)] overflow-y-auto thin-scroll transition-all duration-300 ease-in-out ${
+            filtersOpen ? 'w-[220px] opacity-100' : 'w-0 opacity-0 border-0 p-0 overflow-hidden -mr-3 pointer-events-none'
+          }`}
+        >
              <div className="flex items-center justify-between mb-3">
                <h2 className="text-[15px] font-semibold text-ink whitespace-nowrap">Filter Invoices by</h2>
                {(moreCount > 0 || search || range.from !== DEFAULT_RANGE.from || range.to !== DEFAULT_RANGE.to) && <button onClick={reset} className="text-[12.5px] text-primary hover:underline">Clear</button>}
@@ -281,7 +585,6 @@ export default function ZohoFinance() {
                </div>
              </details>
           </aside>
-        )}
 
         <div className="flex-1 min-w-0">
           <div className="grid grid-cols-1 xl:grid-cols-[1fr_1.1fr_1fr] gap-3 mb-3">
@@ -326,11 +629,50 @@ export default function ZohoFinance() {
           <BulkButton icon={Download} onClick={() => exportRows(invoices.filter((i) => table.selected.has(i.id)))}>Export</BulkButton>
           <BulkButton icon={Trash2} danger onClick={() => setConfirm({ ids: selectedIds, label: `${selectedIds.length} invoices` })}>Delete</BulkButton>
         </BulkBar>
-        {layout === 'list' && <DataTable columns={columns} rows={table.pageRows} table={table} showIndex={false} loading={refreshing} dense={dense} minWidth={1180}
-          emptyAction={<button className="btn-primary mt-2 h-9" onClick={() => setForm({ mode: 'create', record: blank() })}><Plus size={16} />Create Invoice</button>} />}
+        {layout === 'list' && (
+          <DataTable
+            columns={columns}
+            rows={table.pageRows}
+            table={table}
+            showIndex={false}
+            loading={refreshing}
+            dense={dense}
+            minWidth={1180}
+            columnMenu={columnMenuConfig}
+            emptyAction={<button className="btn-primary mt-2 h-9" onClick={() => setForm({ mode: 'create', record: blank() })}><Plus size={16} />Create Invoice</button>}
+            headerExtra={
+              <th className="th w-[44px] text-center p-0">
+                <Dropdown width={180} align="right" trigger={
+                  <button type="button" className="h-7 w-7 inline-flex items-center justify-center rounded border border-line bg-white hover:bg-page mt-1">
+                    <Settings2 size={15} className="text-ink-600" />
+                  </button>
+                }>
+                  {(close) => (
+                    <div className="py-1">
+                      <MenuItem close={close} onClick={() => setManageColsOpen(true)}>Manage Columns</MenuItem>
+                      <MenuItem close={close} onClick={() => { localStorage.removeItem('zoho_finance_cols'); localStorage.removeItem('zoho_finance_pinned_cols'); setPinnedColumns([]); setVisibleColumns(['Invoice Number', 'Account Name', 'Invoice Type', 'Invoice Date', 'Due Date', 'Amount', 'Paid Amount', 'Balance', 'Status']); }}>Reset Column Size</MenuItem>
+                      <MenuDivider />
+                      <div className="px-3 py-1.5 text-[13px] font-medium text-ink-500 flex justify-between">Records Per Page <span className="text-ink-600 font-semibold">{pageSize} ▸</span></div>
+                      <div className="pl-4 pr-2 pb-1 space-y-0.5">
+                         {[10, 25, 50, 100].map(sz => <MenuItem key={sz} close={close} active={pageSize === sz} onClick={() => { setPageSize(sz); table.setPage(1); }}>{sz}</MenuItem>)}
+                      </div>
+                      <MenuDivider />
+                      <div className="px-3 py-1.5 text-[13px] font-medium text-ink-500 flex justify-between">View Mode <span className="text-ink-600 font-semibold">{wrapText ? 'Wrap Text' : 'No Wrap'} ▸</span></div>
+                      <div className="pl-4 pr-2 pb-1 space-y-0.5">
+                         <MenuItem close={close} active={wrapText} onClick={() => setWrapText(true)}>Wrap Text</MenuItem>
+                         <MenuItem close={close} active={!wrapText} onClick={() => setWrapText(false)}>No Wrap</MenuItem>
+                      </div>
+                    </div>
+                  )}
+                </Dropdown>
+              </th>
+            }
+          />
+        )}
         {layout === 'kanban' && <div className="p-3"><KanbanView groups={INVOICE_STATUSES.map((s) => ({ key: s, label: s, color: STATUS_COLORS[s] }))} rows={table.sorted} groupOf={(i) => i.status}
           onMove={setStatus} onCardClick={(i) => setViewing(i.id)} summary={(items) => `${fmtCompact(items.reduce((s, i) => s + balanceOf(i), 0))} outstanding`}
           renderCard={(i) => (<div><div className="flex items-center justify-between"><span className="text-[13.5px] font-semibold text-primary">{i.number}</span><StatusBadge kind="invoiceType" value={i.type} size="sm" /></div><div className="text-[12px] text-ink-500 mt-1">{accountName(i.accountId)} · due {fmtDate(i.dueDate)}</div><div className="flex justify-between mt-2 text-[12.5px]"><span className="text-ink">{fmtINR(i.amount)}</span><span className="text-ink-500">Bal {fmtINR(balanceOf(i))}</span></div></div>)} /></div>}
+
         {layout === 'grid' && <div className="p-3"><GridView rows={table.pageRows} onCardClick={(i) => setViewing(i.id)} renderCard={(i) => (
           <>
             <div className="flex items-center justify-between"><span className="font-semibold text-primary">{i.number}</span><StatusBadge kind="invoiceStatus" value={i.status} size="sm" /></div>
@@ -340,8 +682,152 @@ export default function ZohoFinance() {
             <div className="flex justify-between mt-2 text-[12px] text-ink-500"><span>Paid {fmtINR(i.paidAmount)}</span><span>Due {fmtDate(i.dueDate)}</span></div>
           </>
         )} /></div>}
+
         {layout === 'chart' && <ChartView title="Invoice count by status (filtered)" data={INVOICE_STATUSES.map((s) => ({ name: s, value: filtered.filter((i) => i.status === s).length, color: STATUS_COLORS[s] }))} valueLabel="Invoices" />}
-        {(layout === 'list' || layout === 'grid') && <div className="px-4"><Pagination table={table} noun="invoices" options={[10, 25, 50, 100]} /></div>}
+
+        {/* 5. Timeline View */}
+        {layout === 'timeline' && (
+          <FinanceTimelineView
+            rows={table.sorted}
+            accountName={accountName}
+            onView={(id) => setViewing(id)}
+            onEdit={(i) => setForm({ mode: 'edit', record: i })}
+            onDelete={(i) => setConfirm({ ids: [i.id], label: i.number })}
+            onRecordPayment={(id) => setPayFor(id)}
+          />
+        )}
+
+        {/* 6. Split View */}
+        {layout === 'split' && (
+          <FinanceSplitView
+            invoices={table.sorted}
+            accountName={accountName}
+            onView={(id) => setViewing(id)}
+            onEdit={(i) => setForm({ mode: 'edit', record: i })}
+            onDelete={(i) => setConfirm({ ids: [i.id], label: i.number })}
+            onRecordPayment={(id) => setPayFor(id)}
+            INVOICE_STATUSES={INVOICE_STATUSES}
+            STATUS_COLORS={STATUS_COLORS}
+          />
+        )}
+
+        {/* 7. Custom List View */}
+        {layout === 'custom_list' && (
+          <div>
+            <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 mx-3.5 my-3 bg-slate-50 border border-line rounded-xl text-[13px]">
+              <div className="flex items-center gap-2">
+                <SlidersHorizontal size={16} className="text-primary" />
+                <span className="font-semibold text-ink">Custom List View:</span>
+                <span className="text-ink-500">Configure or manage custom list views with tailored column sets and filter criteria.</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setManageColsOpen(true)}
+                className="btn-primary h-8 px-3 rounded-md text-[12.5px] font-semibold flex items-center gap-1.5"
+              >
+                <Settings2 size={13} />
+                <span>Manage Columns</span>
+              </button>
+            </div>
+            <DataTable
+              columns={columns}
+              rows={table.pageRows}
+              table={table}
+              showIndex={false}
+              loading={refreshing}
+              dense={dense}
+              minWidth={1180}
+              columnMenu={columnMenuConfig}
+              emptyAction={<button className="btn-primary mt-2 h-9" onClick={() => setForm({ mode: 'create', record: blank() })}><Plus size={16} />Create Invoice</button>}
+              headerExtra={
+                <th className="th w-[44px] text-center p-0">
+                  <Dropdown width={180} align="right" trigger={
+                    <button type="button" className="h-7 w-7 inline-flex items-center justify-center rounded border border-line bg-white hover:bg-page mt-1">
+                      <Settings2 size={15} className="text-ink-600" />
+                    </button>
+                  }>
+                    {(close) => (
+                      <div className="py-1">
+                        <MenuItem close={close} onClick={() => setManageColsOpen(true)}>Manage Columns</MenuItem>
+                        <MenuItem close={close} onClick={() => { localStorage.removeItem('zoho_finance_cols'); localStorage.removeItem('zoho_finance_pinned_cols'); setPinnedColumns([]); setVisibleColumns(['Invoice Number', 'Account Name', 'Invoice Type', 'Invoice Date', 'Due Date', 'Amount', 'Paid Amount', 'Balance', 'Status']); }}>Reset Column Size</MenuItem>
+                        <MenuDivider />
+                        <div className="px-3 py-1.5 text-[13px] font-medium text-ink-500 flex justify-between">Records Per Page <span className="text-ink-600 font-semibold">{pageSize} ▸</span></div>
+                        <div className="pl-4 pr-2 pb-1 space-y-0.5">
+                           {[10, 25, 50, 100].map(sz => <MenuItem key={sz} close={close} active={pageSize === sz} onClick={() => { setPageSize(sz); table.setPage(1); }}>{sz}</MenuItem>)}
+                        </div>
+                        <MenuDivider />
+                        <div className="px-3 py-1.5 text-[13px] font-medium text-ink-500 flex justify-between">View Mode <span className="text-ink-600 font-semibold">{wrapText ? 'Wrap Text' : 'No Wrap'} ▸</span></div>
+                        <div className="pl-4 pr-2 pb-1 space-y-0.5">
+                           <MenuItem close={close} active={wrapText} onClick={() => setWrapText(true)}>Wrap Text</MenuItem>
+                           <MenuItem close={close} active={!wrapText} onClick={() => setWrapText(false)}>No Wrap</MenuItem>
+                        </div>
+                      </div>
+                    )}
+                  </Dropdown>
+                </th>
+              }
+            />
+          </div>
+        )}
+
+        {/* 8. Tile View */}
+        {layout === 'tile' && (
+          <FinanceTileView
+            rows={table.pageRows}
+            accountName={accountName}
+            onView={(id) => setViewing(id)}
+            onEdit={(i) => setForm({ mode: 'edit', record: i })}
+            onDelete={(i) => setConfirm({ ids: [i.id], label: i.number })}
+            onRecordPayment={(id) => setPayFor(id)}
+            onStatusChange={setStatus}
+            INVOICE_STATUSES={INVOICE_STATUSES}
+            STATUS_COLORS={STATUS_COLORS}
+          />
+        )}
+
+        {/* 9. Table View */}
+        {layout === 'table' && (
+          <DataTable
+            columns={columns}
+            rows={table.pageRows}
+            table={table}
+            showIndex={false}
+            loading={refreshing}
+            dense={true}
+            minWidth={1180}
+            columnMenu={columnMenuConfig}
+            emptyAction={<button className="btn-primary mt-2 h-9" onClick={() => setForm({ mode: 'create', record: blank() })}><Plus size={16} />Create Invoice</button>}
+            headerExtra={
+              <th className="th w-[44px] text-center p-0">
+                <Dropdown width={180} align="right" trigger={
+                  <button type="button" className="h-7 w-7 inline-flex items-center justify-center rounded border border-line bg-white hover:bg-page mt-1">
+                    <Settings2 size={15} className="text-ink-600" />
+                  </button>
+                }>
+                  {(close) => (
+                    <div className="py-1">
+                      <MenuItem close={close} onClick={() => setManageColsOpen(true)}>Manage Columns</MenuItem>
+                      <MenuItem close={close} onClick={() => { localStorage.removeItem('zoho_finance_cols'); localStorage.removeItem('zoho_finance_pinned_cols'); setPinnedColumns([]); setVisibleColumns(['Invoice Number', 'Account Name', 'Invoice Type', 'Invoice Date', 'Due Date', 'Amount', 'Paid Amount', 'Balance', 'Status']); }}>Reset Column Size</MenuItem>
+                      <MenuDivider />
+                      <div className="px-3 py-1.5 text-[13px] font-medium text-ink-500 flex justify-between">Records Per Page <span className="text-ink-600 font-semibold">{pageSize} ▸</span></div>
+                      <div className="pl-4 pr-2 pb-1 space-y-0.5">
+                         {[10, 25, 50, 100].map(sz => <MenuItem key={sz} close={close} active={pageSize === sz} onClick={() => { setPageSize(sz); table.setPage(1); }}>{sz}</MenuItem>)}
+                      </div>
+                      <MenuDivider />
+                      <div className="px-3 py-1.5 text-[13px] font-medium text-ink-500 flex justify-between">View Mode <span className="text-ink-600 font-semibold">{wrapText ? 'Wrap Text' : 'No Wrap'} ▸</span></div>
+                      <div className="pl-4 pr-2 pb-1 space-y-0.5">
+                         <MenuItem close={close} active={wrapText} onClick={() => setWrapText(true)}>Wrap Text</MenuItem>
+                         <MenuItem close={close} active={!wrapText} onClick={() => setWrapText(false)}>No Wrap</MenuItem>
+                      </div>
+                    </div>
+                  )}
+                </Dropdown>
+              </th>
+            }
+          />
+        )}
+
+        {(['list', 'grid', 'tile', 'table', 'custom_list'].includes(layout)) && <div className="px-4"><Pagination table={table} noun="invoices" options={[10, 25, 50, 100]} /></div>}
       </section>
         </div>
       </div>
@@ -397,6 +883,16 @@ export default function ZohoFinance() {
           </>
         )}
       </Drawer>
+      <ManageColsModal
+        open={manageColsOpen}
+        visibleCols={visibleColumns}
+        onClose={() => setManageColsOpen(false)}
+        onSave={(cols) => {
+          setVisibleColumns(cols);
+          localStorage.setItem('zoho_finance_cols', JSON.stringify(cols));
+          setManageColsOpen(false);
+        }}
+      />
     </div>
   );
 }
